@@ -21,7 +21,7 @@ Press **F12** in game > Fums-PriceIndex.
 
 - **Inspect window**: where the prices go in the inspect window, or off.
 - **Hover tooltip**: prices under the item's name when you hover it.
-- **Price on items**: a price tag on your items. Flea, best trader, or whichever pays the most. Off by default.
+- **Price on items**: a price tag on your items. Flea, best trader, or whichever pays the most. On (Most) by default.
 - **Price position on items**: bottom left, stepped up past the game's own icons, or halfway up the left edge.
 - **Stacks**: price one item, the whole stack, or both.
 - **Show in raid**, **Include Fence**, and how often flea prices are asked for again.

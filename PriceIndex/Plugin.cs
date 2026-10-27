@@ -67,7 +67,7 @@ namespace PriceIndex
                 + "Takes effect the next time a window opens.");
             HoverTooltip = Config.Bind("1. Display", "Hover tooltip", true,
                 "Also show the prices under the item's name when hovering it.");
-            IconPrice = Config.Bind("1. Display", "Price on items", PriceIndex.IconPrice.Off,
+            IconPrice = Config.Bind("1. Display", "Price on items", PriceIndex.IconPrice.Most,
                 "A short price in the corner of your own items in the stash and inventory. "
                 + "Flea: the flea price. Trader: the best trader's. "
                 + "Most: where you can sell it for the most right now, the flea or the best trader. "
