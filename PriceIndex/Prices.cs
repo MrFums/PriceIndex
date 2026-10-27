@@ -37,6 +37,7 @@ namespace PriceIndex
         private const string FenceId = "579dc571d53a0658a154fbec";
         private const string FleaRoute = "/betterflea/item-price";
         private const int MostCached = 2000;
+        private const int MostInFlight = 4;
 
         private enum BetterFlea
         {
@@ -49,28 +50,57 @@ namespace PriceIndex
         private static BetterFlea _betterFlea = BetterFlea.Unknown;
         private static Action _checked;
 
-        private class FleaEntry
+        private class Entry
         {
             public double Price;
             public bool Known;
             public float FetchedAt = float.NegativeInfinity;
             public bool Pending;
             public Action Done;
+
+            public bool Stale => !Pending && Time.realtimeSinceStartup - FetchedAt > Plugin.RefreshSeconds.Value;
+
+            public FleaState Read(Action onReady, out double price)
+            {
+                if (Pending && onReady != null)
+                {
+                    Done -= onReady;
+                    Done += onReady;
+                }
+
+                price = Known ? Price : 0;
+                if (Known)
+                    return Pending ? FleaState.Refreshing : FleaState.Ready;
+                return Pending ? FleaState.Loading : FleaState.Unavailable;
+            }
+
+            public void Finish()
+            {
+                Pending = false;
+                FetchedAt = Time.realtimeSinceStartup;
+                var done = Done;
+                Done = null;
+                Invoke(done);
+            }
         }
 
-        private static readonly Dictionary<string, FleaEntry> Flea = new Dictionary<string, FleaEntry>();
+        private static readonly Dictionary<string, Entry> Flea = new Dictionary<string, Entry>();
+        private static readonly Dictionary<string, Entry> Market = new Dictionary<string, Entry>();
         private static readonly HashSet<string> SupplyRequested = new HashSet<string>();
+        private static readonly Queue<KeyValuePair<string, Entry>> Queued = new Queue<KeyValuePair<string, Entry>>();
+        private static int _inFlight;
 
-        private class MarketEntry
+        private static void Invoke(Action action)
         {
-            public double Average;
-            public bool Known;
-            public float FetchedAt = float.NegativeInfinity;
-            public bool Pending;
-            public Action Done;
+            try
+            {
+                action?.Invoke();
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogError(e);
+            }
         }
-
-        private static readonly Dictionary<string, MarketEntry> Market = new Dictionary<string, MarketEntry>();
 
         public static IEftSession Session
         {
@@ -139,14 +169,7 @@ namespace PriceIndex
 
                 var done = _checked;
                 _checked = null;
-                try
-                {
-                    done?.Invoke();
-                }
-                catch (Exception e)
-                {
-                    Plugin.Log.LogError(e);
-                }
+                Invoke(done);
             }
         }
 
@@ -174,51 +197,32 @@ namespace PriceIndex
 
         private static FleaState TryGetBetterFlea(Item item, out double price, Action onReady)
         {
-            price = 0;
             string body = Serialize(item);
             if (!Flea.TryGetValue(body, out var entry))
             {
                 if (Flea.Count >= MostCached)
                     Flea.Clear();
-                Flea[body] = entry = new FleaEntry();
+                Flea[body] = entry = new Entry();
             }
 
-            bool stale = Time.realtimeSinceStartup - entry.FetchedAt > Plugin.RefreshSeconds.Value;
-            if (stale && !entry.Pending)
+            if (entry.Stale)
                 RequestFlea(body, entry);
-
-            if (entry.Pending && onReady != null)
-            {
-                entry.Done -= onReady;
-                entry.Done += onReady;
-            }
-
-            if (entry.Known)
-            {
-                price = entry.Price;
-                return entry.Pending ? FleaState.Refreshing : FleaState.Ready;
-            }
-
-            return entry.Pending ? FleaState.Loading : FleaState.Unavailable;
+            return entry.Read(onReady, out price);
         }
 
-        private const int MostInFlight = 4;
-        private static int _inFlight;
-        private static readonly Queue<KeyValuePair<string, FleaEntry>> Queued = new Queue<KeyValuePair<string, FleaEntry>>();
-
-        private static void RequestFlea(string body, FleaEntry entry)
+        private static void RequestFlea(string body, Entry entry)
         {
             entry.Pending = true;
             if (_inFlight >= MostInFlight)
             {
-                Queued.Enqueue(new KeyValuePair<string, FleaEntry>(body, entry));
+                Queued.Enqueue(new KeyValuePair<string, Entry>(body, entry));
                 return;
             }
 
             SendFlea(body, entry);
         }
 
-        private static async void SendFlea(string body, FleaEntry entry)
+        private static async void SendFlea(string body, Entry entry)
         {
             _inFlight++;
             try
@@ -234,19 +238,7 @@ namespace PriceIndex
             finally
             {
                 _inFlight--;
-                entry.Pending = false;
-                entry.FetchedAt = Time.realtimeSinceStartup;
-                var done = entry.Done;
-                entry.Done = null;
-                try
-                {
-                    done?.Invoke();
-                }
-                catch (Exception e)
-                {
-                    Plugin.Log.LogError(e);
-                }
-
+                entry.Finish();
                 if (Queued.Count > 0)
                 {
                     var next = Queued.Dequeue();
@@ -289,53 +281,26 @@ namespace PriceIndex
 
         private static FleaState TryGetMarket(string tpl, out double average, Action onReady)
         {
-            average = 0;
             if (!Market.TryGetValue(tpl, out var entry))
-                Market[tpl] = entry = new MarketEntry();
+                Market[tpl] = entry = new Entry();
 
-            if (Time.realtimeSinceStartup - entry.FetchedAt > Plugin.RefreshSeconds.Value && !entry.Pending)
+            var session = Session;
+            if (entry.Stale && session != null)
             {
-                var session = Session;
-                if (session != null)
+                entry.Pending = true;
+                session.GetMarketPrices(tpl, result =>
                 {
-                    entry.Pending = true;
-                    session.GetMarketPrices(tpl, result =>
+                    if (result.Succeed && result.Value != null)
                     {
-                        entry.Pending = false;
-                        entry.FetchedAt = Time.realtimeSinceStartup;
-                        if (result.Succeed && result.Value != null)
-                        {
-                            entry.Average = result.Value.avg;
-                            entry.Known = true;
-                        }
+                        entry.Price = result.Value.avg;
+                        entry.Known = true;
+                    }
 
-                        var done = entry.Done;
-                        entry.Done = null;
-                        try
-                        {
-                            done?.Invoke();
-                        }
-                        catch (Exception e)
-                        {
-                            Plugin.Log.LogError(e);
-                        }
-                    });
-                }
+                    entry.Finish();
+                });
             }
 
-            if (entry.Pending && onReady != null)
-            {
-                entry.Done -= onReady;
-                entry.Done += onReady;
-            }
-
-            if (entry.Known)
-            {
-                average = entry.Average;
-                return entry.Pending ? FleaState.Refreshing : FleaState.Ready;
-            }
-
-            return entry.Pending ? FleaState.Loading : FleaState.Unavailable;
+            return entry.Read(onReady, out average);
         }
 
         private static double Quality(Item item)
@@ -592,6 +557,181 @@ namespace PriceIndex
             if (currency == CurrencyUtil.EURO_ID)
                 return "€" + number;
             return number + " ₽";
+        }
+    }
+
+    internal static class Redraw
+    {
+        public static readonly Action OnPrice = () => _due = true;
+        private static bool _due;
+
+        public static bool Due()
+        {
+            if (!_due)
+                return false;
+            _due = false;
+            return true;
+        }
+    }
+
+    internal sealed class PriceInfo
+    {
+        public bool Loading;
+        public bool Refreshing;
+        public bool FleaLocked;
+        public int Count = 1;
+
+        public string FleaName = "Flea market";
+        public string FleaValue;
+        public string FleaText;
+        public string FleaTip;
+        public double? FleaEach;
+        public double? FleaTotal;
+        public double FleaKeep;
+
+        public string TraderName = "Traders";
+        public string TraderValue;
+        public string TraderText;
+        public string TraderTip;
+        public MongoID TraderCurrency = CurrencyUtil.ROUBLE_ID;
+        public double? TraderRoubles;
+
+        public static bool Shows(Item item)
+        {
+            if (item == null || item.QuestItem || CurrencyUtil.TryGetCurrencyType(item.TemplateId, out _))
+                return false;
+
+            bool inRaid = Singleton<GameWorld>.Instantiated && !(Singleton<GameWorld>.Instance is HideoutGameWorld);
+            return Plugin.InRaid.Value || !inRaid;
+        }
+
+        public static PriceInfo For(Item item, Action onReady)
+        {
+            int stack = Math.Max(1, item.StackObjectsCount);
+            int count = ShopStock(item) ? 1 : stack;
+            var info = new PriceInfo { Count = count };
+            bool hasContents = item.GetAllItems().Any(part => part != item && part.CurrentAddress is GridItemAddress);
+
+            var fleaTip = new StringBuilder();
+            string block = Prices.FleaBlock(item);
+            FleaState state = Prices.TryGetFlea(item, out double each, out bool exact, onReady);
+            info.Refreshing = state == FleaState.Refreshing;
+            switch (state)
+            {
+                case FleaState.Ready:
+                case FleaState.Refreshing:
+                    double total = each * count;
+                    info.FleaEach = each;
+                    info.FleaTotal = total;
+                    info.FleaLocked = block != null;
+                    if (info.FleaLocked)
+                        info.FleaName = "Flea market (locked)";
+                    info.FleaValue = Amount(each, total, count, null);
+                    info.FleaText = Amount(each, total, count, CurrencyUtil.ROUBLE_ID);
+                    fleaTip.Append("Sells for about ").Append(Prices.Money(total, CurrencyUtil.ROUBLE_ID));
+                    if (count > 1)
+                        fleaTip.Append(" (").Append(Prices.Money(each, CurrencyUtil.ROUBLE_ID)).Append(" each)");
+                    fleaTip.Append(exact ? ".\nPrice from Better Flea." : ".\nPrice from the base game.");
+
+                    if (info.FleaLocked)
+                    {
+                        fleaTip.Append('\n').Append(block).Append("\nUntil you can list it, only traders will buy it.");
+                    }
+                    else
+                    {
+                        double? fee = Prices.FleaFee(item, each);
+                        info.FleaKeep = total - (fee ?? 0) * count / stack;
+                        if (hasContents)
+                            fleaTip.Append("\nEmpty it before listing it.");
+                    }
+                    break;
+                case FleaState.Loading:
+                    info.FleaValue = info.FleaText = "...";
+                    info.Loading = true;
+                    break;
+                default:
+                    if (block != null)
+                    {
+                        info.FleaValue = info.FleaText = "Can't be listed";
+                        fleaTip.Append(block);
+                    }
+                    else
+                    {
+                        info.FleaValue = info.FleaText = "N/A";
+                        fleaTip.Append("The flea has no price for this item right now.");
+                    }
+                    break;
+            }
+
+            info.FleaTip = fleaTip.ToString();
+
+            var traderTip = new StringBuilder();
+            if (Prices.TryGetBestTrader(item, out TraderOffer best, out bool loading, onReady))
+            {
+                double traderEach = (double)best.Amount / stack;
+                double traderTotal = traderEach * count;
+                double roubles = best.Roubles / stack * count;
+                info.TraderName = best.Trader.LocalizedName;
+                info.TraderCurrency = best.Currency;
+                info.TraderRoubles = roubles;
+                info.TraderValue = Amount(traderEach, traderTotal, count, null);
+                info.TraderText = Amount(traderEach, traderTotal, count, best.Currency);
+                traderTip.Append(best.Trader.LocalizedName).Append(" pays the most: ").Append(Prices.Money(traderTotal, best.Currency));
+                if (best.Currency != CurrencyUtil.ROUBLE_ID)
+                    traderTip.Append(" (").Append(Prices.Money(roubles, CurrencyUtil.ROUBLE_ID)).Append(')');
+                if (count > 1)
+                    traderTip.Append(", ").Append(Prices.Money(traderEach, best.Currency)).Append(" each");
+                traderTip.Append('.');
+
+                if (info.FleaKeep > 0)
+                {
+                    double gap = Math.Abs(info.FleaKeep - roubles);
+                    traderTip.Append('\n').Append(info.FleaKeep > roubles
+                        ? "The Flea Market gets you " + Prices.Money(gap, CurrencyUtil.ROUBLE_ID) + " more after its fee."
+                        : best.Trader.LocalizedName + " gets you " + Prices.Money(gap, CurrencyUtil.ROUBLE_ID) + " more than the Flea Market after its fee.");
+                }
+            }
+            else if (loading)
+            {
+                info.TraderValue = info.TraderText = "...";
+                info.Loading = true;
+            }
+            else if (hasContents)
+            {
+                info.TraderValue = info.TraderText = "Empty it first";
+                traderTip.Append("Traders only buy containers that are empty.");
+            }
+            else
+            {
+                info.TraderValue = info.TraderText = "Won't buy";
+                traderTip.Append("No trader you can trade with buys this item.");
+            }
+
+            info.TraderTip = traderTip.ToString();
+            return info;
+        }
+
+        private static bool ShopStock(Item item)
+        {
+            return !(item.Owner is InventoryController) || item.StackObjectsCount > item.StackMaxSize;
+        }
+
+        private static string Amount(double each, double total, int count, MongoID? currency)
+        {
+            string Money(double amount) => currency == null ? Prices.Money(amount) : Prices.Money(amount, currency.Value);
+
+            if (count <= 1)
+                return Money(total);
+
+            switch (Plugin.Stacks.Value)
+            {
+                case StackPrice.Single:
+                    return Money(each);
+                case StackPrice.Stack:
+                    return Money(total);
+                default:
+                    return Money(each) + " (" + Money(total) + ")";
+            }
         }
     }
 }

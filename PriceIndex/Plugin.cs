@@ -70,9 +70,10 @@ namespace PriceIndex
             IconPrice = Config.Bind("1. Display", "Price on items", PriceIndex.IconPrice.Most,
                 "A short price in the corner of your own items in the stash and inventory. "
                 + "Flea: the flea price. Trader: the best trader's. "
-                + "Most: where you can sell it for the most right now, the flea or the best trader. "
-                + "The flea only counts when you can list it there (flea level, found in raid only, and with "
-                + "Better Flea its bans, item unlock levels and trader-bought items).");
+                + "Most: whichever pays more, the flea or the best trader. "
+                + "A flea price you can't get yet shows in orange: your flea level is too low, it isn't found in raid, "
+                + "or with Better Flea it's banned, above your unlock level or bought from a trader. "
+                + "Until then, only traders will buy it.");
             IconPosition = Config.Bind("1. Display", "Price position on items", PriceIndex.IconPosition.BottomLeft,
                 "Where the price on items goes. MiddleLeft: halfway up the left edge, the same place on every item. "
                 + "BottomLeft: the bottom left corner, with the game's own icons there moved up above it.");
