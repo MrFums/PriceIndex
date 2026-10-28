@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.0
+
+- The hover tooltip opens straight away instead of after the game's 0.6 second delay.
+- Prices start loading as soon as an item shows in a grid, even with price tags off, so they're ready by the time you hover or inspect it. The item you hover or inspect is asked for ahead of the rest.
+- New: **Inspect window shows in**, **Hover tooltip shows in** and **Price on items shows in**. Tick Stash, Raid or both for each one. Tick neither to turn it off.
+- Removed: **Show in raid** and the **Hover tooltip** on/off switch. The settings above replace them.
+
 ## 1.0.0
 
 First release. Made to be used with Better Flea, but works fine without it.

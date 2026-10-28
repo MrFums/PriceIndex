@@ -102,12 +102,12 @@ namespace PriceIndex
 
         private static bool Shows(ItemSpecificationPanel panel, Item item)
         {
-            return PriceInfo.Shows(item) && panel.Examined;
+            return PriceInfo.Shows(item, Plugin.InspectIn.Value) && panel.Examined;
         }
 
         private static ItemAttribute[] Rows(ItemSpecificationPanel panel, Item item)
         {
-            PriceInfo info = PriceInfo.For(item, Redraw.OnPrice);
+            PriceInfo info = PriceInfo.For(item, Redraw.OnPrice, true);
             if (info.Loading || info.Refreshing)
                 Waiting.Add(panel);
 
@@ -335,21 +335,22 @@ namespace PriceIndex
             _showing = null;
         }
 
-        private static void TooltipShowPrefix(ref string text)
+        private static void TooltipShowPrefix(ref string text, ref float delay)
         {
             GridItemView view = _showing;
             _showing = null;
-            if (view == null || text == null || !Plugin.HoverTooltip.Value)
+            if (view == null || text == null)
                 return;
 
             try
             {
-                if (!PriceInfo.Shows(view.Item) || !view.Examined || !text.StartsWith(view.GetItemName(), StringComparison.Ordinal))
+                if (!PriceInfo.Shows(view.Item, Plugin.HoverIn.Value) || !view.Examined || !text.StartsWith(view.GetItemName(), StringComparison.Ordinal))
                     return;
 
                 _item = view.Item;
                 _baseText = text;
                 text = _shownText = text + Lines(_item);
+                delay = 0f;
             }
             catch (Exception e)
             {
@@ -369,7 +370,7 @@ namespace PriceIndex
 
         private static string Lines(Item item)
         {
-            PriceInfo info = PriceInfo.For(item, Redraw.OnPrice);
+            PriceInfo info = PriceInfo.For(item, Redraw.OnPrice, true);
             return new StringBuilder("\n")
                 .Append(Colour(Label, info.FleaName + "  ")).Append(Colour(Value, info.FleaText)).Append('\n')
                 .Append(Colour(Label, info.TraderName + "  ")).Append(Colour(Value, info.TraderText))
@@ -419,7 +420,10 @@ namespace PriceIndex
 
             Item item = cell.Item;
             bool locked = false;
-            string text = Plugin.IconPrice.Value != IconPrice.Off && Shows(cell, item) ? Text(cell, item, out locked) : null;
+            bool tagged = Plugin.IconPrice.Value != IconPrice.Off && Shows(cell, item);
+            string text = tagged ? Text(cell, item, out locked) : null;
+            if (!tagged && Warms(cell, item))
+                Prices.Warm(item);
 
             Transform existing = cell.transform.Find(LabelName);
             if (string.IsNullOrEmpty(text))
@@ -442,13 +446,20 @@ namespace PriceIndex
 
         private static bool Shows(ItemView cell, Item item)
         {
-            return cell is GridItemView && cell.IsSearched && cell.Examined && PriceInfo.Shows(item)
+            return cell is GridItemView && cell.IsSearched && cell.Examined && PriceInfo.Shows(item, Plugin.IconIn.Value)
                    && cell.ItemContext != null && cell.ItemContext.HasViewComponent(EItemViewComponent.QuestItem);
+        }
+
+        private static bool Warms(ItemView cell, Item item)
+        {
+            return cell is GridItemView && cell.IsSearched && cell.Examined
+                   && (PriceInfo.Shows(item, Plugin.HoverIn.Value)
+                       || Plugin.Inspect.Value != InspectStyle.Off && PriceInfo.Shows(item, Plugin.InspectIn.Value));
         }
 
         private static string Text(ItemView cell, Item item, out bool locked)
         {
-            PriceInfo info = PriceInfo.For(item, Redraw.OnPrice);
+            PriceInfo info = PriceInfo.For(item, Redraw.OnPrice, false);
             locked = false;
             if (info.Loading || info.Refreshing)
                 Waiting.Add(cell);

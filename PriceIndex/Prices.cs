@@ -56,6 +56,7 @@ namespace PriceIndex
             public bool Known;
             public float FetchedAt = float.NegativeInfinity;
             public bool Pending;
+            public bool Waiting;
             public Action Done;
 
             public bool Stale => !Pending && Time.realtimeSinceStartup - FetchedAt > Plugin.RefreshSeconds.Value;
@@ -111,7 +112,21 @@ namespace PriceIndex
             }
         }
 
-        public static FleaState TryGetFlea(Item item, out double price, out bool exact, Action onReady)
+        public static void Warm(Item item)
+        {
+            TryGetFlea(item, out _, out _, null, false);
+
+            var session = Session;
+            if (session?.Traders == null)
+                return;
+            foreach (Trader trader in session.Traders)
+            {
+                if (trader?.Info != null && trader.Info.Available && trader._supplyData == null)
+                    LoadSupplyData(session, trader, null);
+            }
+        }
+
+        public static FleaState TryGetFlea(Item item, out double price, out bool exact, Action onReady, bool urgent)
         {
             price = 0;
             exact = false;
@@ -121,7 +136,7 @@ namespace PriceIndex
                 case BetterFlea.Checking:
                     return FleaState.Loading;
                 case BetterFlea.Yes:
-                    FleaState state = TryGetBetterFlea(item, out price, onReady);
+                    FleaState state = TryGetBetterFlea(item, out price, onReady, urgent);
                     exact = state != FleaState.Unavailable;
                     if (exact)
                         return state;
@@ -195,7 +210,7 @@ namespace PriceIndex
             }
         }
 
-        private static FleaState TryGetBetterFlea(Item item, out double price, Action onReady)
+        private static FleaState TryGetBetterFlea(Item item, out double price, Action onReady, bool urgent)
         {
             string body = Serialize(item);
             if (!Flea.TryGetValue(body, out var entry))
@@ -206,15 +221,18 @@ namespace PriceIndex
             }
 
             if (entry.Stale)
-                RequestFlea(body, entry);
+                RequestFlea(body, entry, urgent);
+            else if (urgent && entry.Waiting)
+                SendFlea(body, entry);
             return entry.Read(onReady, out price);
         }
 
-        private static void RequestFlea(string body, Entry entry)
+        private static void RequestFlea(string body, Entry entry, bool urgent)
         {
             entry.Pending = true;
-            if (_inFlight >= MostInFlight)
+            if (!urgent && _inFlight >= MostInFlight)
             {
+                entry.Waiting = true;
                 Queued.Enqueue(new KeyValuePair<string, Entry>(body, entry));
                 return;
             }
@@ -224,6 +242,7 @@ namespace PriceIndex
 
         private static async void SendFlea(string body, Entry entry)
         {
+            entry.Waiting = false;
             _inFlight++;
             try
             {
@@ -239,10 +258,11 @@ namespace PriceIndex
             {
                 _inFlight--;
                 entry.Finish();
-                if (Queued.Count > 0)
+                while (Queued.Count > 0 && _inFlight < MostInFlight)
                 {
                     var next = Queued.Dequeue();
-                    SendFlea(next.Key, next.Value);
+                    if (next.Value.Waiting)
+                        SendFlea(next.Key, next.Value);
                 }
             }
         }
@@ -596,16 +616,16 @@ namespace PriceIndex
         public MongoID TraderCurrency = CurrencyUtil.ROUBLE_ID;
         public double? TraderRoubles;
 
-        public static bool Shows(Item item)
+        public static bool Shows(Item item, ShowIn where)
         {
-            if (item == null || item.QuestItem || CurrencyUtil.TryGetCurrencyType(item.TemplateId, out _))
+            if (where == ShowIn.None || item == null || item.QuestItem || CurrencyUtil.TryGetCurrencyType(item.TemplateId, out _))
                 return false;
 
             bool inRaid = Singleton<GameWorld>.Instantiated && !(Singleton<GameWorld>.Instance is HideoutGameWorld);
-            return Plugin.InRaid.Value || !inRaid;
+            return (where & (inRaid ? ShowIn.Raid : ShowIn.Stash)) != 0;
         }
 
-        public static PriceInfo For(Item item, Action onReady)
+        public static PriceInfo For(Item item, Action onReady, bool urgent)
         {
             int stack = Math.Max(1, item.StackObjectsCount);
             int count = ShopStock(item) ? 1 : stack;
@@ -614,7 +634,7 @@ namespace PriceIndex
 
             var fleaTip = new StringBuilder();
             string block = Prices.FleaBlock(item);
-            FleaState state = Prices.TryGetFlea(item, out double each, out bool exact, onReady);
+            FleaState state = Prices.TryGetFlea(item, out double each, out bool exact, onReady, urgent);
             info.Refreshing = state == FleaState.Refreshing;
             switch (state)
             {

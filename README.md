@@ -32,11 +32,12 @@ To remove it, delete that folder.
 Press **F12** in game > Fums-PriceIndex.
 
 - **Inspect window**: where the prices go in the inspect window, or off.
-- **Hover tooltip**: prices under the item's name when you hover it.
+- **Hover tooltip**: prices under the item's name when you hover it. The tooltip opens straight away instead of after the game's short delay.
 - **Price on items**: a price tag on your items. Flea, best trader, or whichever pays the most (the default).
 - **Price position on items**: bottom left, stepped up past the game's own icons, or halfway up the left edge.
 - **Stacks**: price one item, the whole stack, or both.
-- **Show in raid**, **Include Fence**, and how often flea prices are asked for again.
+- **Shows in**: the inspect window, hover tooltip and price on items each have their own. Tick Stash, Raid, or both.
+- **Include Fence**, and how often flea prices are asked for again.
 
 ## Other mods
 - **Choo² Trader Modding**: its price tags sit on the same items. Turn off its "Show price tags on items" and "Show flea price tags", or turn off Price Index's **Price on items**.
