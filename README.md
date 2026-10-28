@@ -5,13 +5,11 @@ See what your loot is worth without leaving the game. Inspect an item and two ro
 - **Flea Market**: what it sells for on the flea
 - **Best trader**: the trader who pays the most, and how much
 
-![Inspect window](imageExamples/inspect-window.png)
+![Gun and gear prices](imageExamples/character-gun.gif)
 
 Hover a row for the details. The same prices show under the item's name when you hover it, and every item in your stash and inventory gets a small price tag.
 
-![Price tags](imageExamples/price-tags.gif)
-
-![Hover tooltip](imageExamples/hover-tooltip.png)
+![Helmet prices](imageExamples/helmet.gif)
 
 Prices count what's actually on the item: a gun's parts, armour plates, rounds in a magazine, and the condition of every part. What's packed inside a rig, bag or case isn't counted.
 
