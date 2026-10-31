@@ -33,7 +33,34 @@ namespace PriceIndex
 
         public static bool NamesOn
         {
-            get { return Plugin.ColourEnabled.Value && Plugin.ColourNames.Value; }
+            get { return Plugin.ColourEnabled.Value && Plugin.ColourNames.Value != NameColour.Off; }
+        }
+
+        public static bool NamesOnItems
+        {
+            get
+            {
+                NameColour mode = Plugin.ColourNames.Value;
+                return Plugin.ColourEnabled.Value && (mode == NameColour.OnItems || mode == NameColour.Both);
+            }
+        }
+
+        public static bool NamesOnHover
+        {
+            get
+            {
+                NameColour mode = Plugin.ColourNames.Value;
+                return Plugin.ColourEnabled.Value && (mode == NameColour.OnHover || mode == NameColour.Both);
+            }
+        }
+
+        public static bool TextOn
+        {
+            get
+            {
+                PriceColour mode = Plugin.ColourPrices.Value;
+                return Plugin.ColourEnabled.Value && (mode == PriceColour.Text || mode == PriceColour.TagBackgroundAndText);
+            }
         }
 
         public static bool PricesOn
@@ -43,7 +70,11 @@ namespace PriceIndex
 
         public static bool TagBackgroundOn
         {
-            get { return Plugin.ColourEnabled.Value && Plugin.ColourPrices.Value == PriceColour.TagBackground; }
+            get
+            {
+                PriceColour mode = Plugin.ColourPrices.Value;
+                return Plugin.ColourEnabled.Value && (mode == PriceColour.TagBackground || mode == PriceColour.TagBackgroundAndText);
+            }
         }
 
         public static bool ItemBackgroundOn
@@ -63,7 +94,7 @@ namespace PriceIndex
 
         public static Color32? ForText(PriceInfo info)
         {
-            return Plugin.ColourEnabled.Value && Plugin.ColourPrices.Value == PriceColour.Text ? For(info) : null;
+            return TextOn ? For(info) : null;
         }
 
         public static Color32? ForName(PriceInfo info)
@@ -116,34 +147,47 @@ namespace PriceIndex
             switch (Plugin.ColourSource.Value)
             {
                 case ColourBy.Flea:
+                    if (info.FleaLoading)
+                        return null;
                     if (info.FleaBanned)
                         return Blocked;
                     roubles = flea;
                     break;
                 case ColourBy.Trader:
+                    if (info.TraderLoading)
+                        return null;
                     roubles = info.TraderRoubles;
-                    if (roubles == null && !info.Loading)
+                    if (roubles == null)
                         return Blocked;
                     break;
                 default:
+                    if (info.Loading)
+                        return null;
                     roubles = flea != null || info.TraderRoubles != null
                         ? Math.Max(flea ?? 0, info.TraderRoubles ?? 0)
                         : (double?)null;
-                    if (roubles == null && !info.Loading && (info.FleaBanned || info.FleaTotal == null))
+                    if (roubles == null && (info.FleaBanned || info.FleaTotal == null))
                         return Blocked;
                     break;
             }
 
-            if (roubles == null)
-                return null;
+            return roubles == null ? null : Lookup(roubles.Value);
+        }
 
+        public static Color32? ForMoney(double? roubles)
+        {
+            return roubles == null || !Plugin.ColourEnabled.Value ? null : Lookup(roubles.Value);
+        }
+
+        private static Color32? Lookup(double roubles)
+        {
             if (_dirty)
                 Rebuild();
 
             Color32? found = null;
             foreach (Tier tier in Built)
             {
-                if (roubles.Value < tier.Min)
+                if (roubles < tier.Min)
                     break;
                 found = tier.Colour;
             }
@@ -158,7 +202,7 @@ namespace PriceIndex
             for (int i = 0; i < Count; i++)
             {
                 Color picked = Plugin.TierColour[i].Value;
-                Built.Add(new Tier { Min = Plugin.TierMin[i].Value, Colour = new Color32((byte)Mathf.RoundToInt(picked.r * 255f), (byte)Mathf.RoundToInt(picked.g * 255f), (byte)Mathf.RoundToInt(picked.b * 255f), 0xff) });
+                Built.Add(new Tier { Min = Math.Max(0, Plugin.TierMin[i].Value), Colour = new Color32((byte)Mathf.RoundToInt(picked.r * 255f), (byte)Mathf.RoundToInt(picked.g * 255f), (byte)Mathf.RoundToInt(picked.b * 255f), 0xff) });
             }
 
             Built.Sort((a, b) => a.Min.CompareTo(b.Min));

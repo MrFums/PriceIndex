@@ -1,13 +1,16 @@
 # Changelog
 
-## 1.2.0 (beta)
+## 1.2.0 (RC1)
 
-- New **4. Colours** section: colour items by how much they're worth, with 5 price tiers. Each tier has a min price and a colour picker. The defaults run grey, green, blue, purple and gold, from 0 up to 400k.
-- **Colour item names**: the item's name on the item and in the hover tooltip.
-- **Colour prices**: Off, Text (the price on items, in the tooltip and the inspect window) or TagBackground (a coloured background on the price on items).
+- New **4. Colours** section: colour items by how much they're worth, with 5 price tiers. Each tier has a min price and a colour picker. The defaults run grey, green, blue, purple and gold, from 0 up to 250k. Colours are off until you tick **Colours**, then item backgrounds are coloured.
+- **Colour item names**: the item's name on the item, in the hover tooltip, or both.
+- Roubles, dollars and euros are coloured by how much the stack is worth. Hover them to see the worth in roubles straight away.
+- **Colour prices**: Off, Text (the price on items, in the tooltip and the inspect window), TagBackground (a coloured background on the price on items) or TagBackgroundAndText (both).
+- New: **Price tag size on items**, to make the price on items bigger or smaller.
 - **Colour item backgrounds**: the background of the item itself, with a strength slider.
 - **Colours based on**: the flea price, the best trader's, or whichever pays more.
 - Items that can't be sold show in red (**Unsellable colour**): banned on the flea when going by the flea, no trader buys it when going by traders, or both when going by whichever pays more.
+- **Price on items** set to Most skips a flea price you can't get yet and shows the trader's price, unless no trader buys it.
 - Price requests are limited to 20 a second, so a whole stash redrawing after a raid or a trade no longer floods the server. The item you hover or inspect still goes first.
 - Price tags set to Trader no longer ask for flea prices, and nothing asks for flea prices when the flea is turned off on the server.
 - A failed price request is tried again after 10 seconds instead of keeping the old price.

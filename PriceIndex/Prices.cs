@@ -618,6 +618,25 @@ namespace PriceIndex
             return best.Trader != null;
         }
 
+        public static double? MoneyRoubles(Item item)
+        {
+            double count = Math.Max(1, item.StackObjectsCount);
+            MongoID currency = item.TemplateId;
+            if (currency == CurrencyUtil.ROUBLE_ID)
+                return count;
+
+            var traders = Session?.Traders;
+            if (traders == null)
+                return null;
+            foreach (Trader trader in traders)
+            {
+                if (trader?.CurrencyCourses != null && trader.CurrencyCourses.TryGetValue(currency.ToString(), out double rate) && rate > 0)
+                    return count * rate;
+            }
+
+            return null;
+        }
+
         private static double Rate(Trader trader, MongoID currency)
         {
             return trader.CurrencyCourses.TryGetValue(currency.ToString(), out double rate) ? rate : 1d;
@@ -707,6 +726,8 @@ namespace PriceIndex
     internal sealed class PriceInfo
     {
         public bool Loading;
+        public bool FleaLoading;
+        public bool TraderLoading;
         public bool Refreshing;
         public bool FleaLocked;
         public bool FleaBanned;
@@ -729,7 +750,19 @@ namespace PriceIndex
 
         public static bool Shows(Item item, ShowIn where)
         {
-            if (where == ShowIn.None || item == null || item.QuestItem || CurrencyUtil.TryGetCurrencyType(item.TemplateId, out _))
+            if (item == null || CurrencyUtil.TryGetCurrencyType(item.TemplateId, out _))
+                return false;
+            return ShowsHere(item, where);
+        }
+
+        public static bool ShowsMoney(Item item, ShowIn where)
+        {
+            return item != null && CurrencyUtil.TryGetCurrencyType(item.TemplateId, out _) && ShowsHere(item, where);
+        }
+
+        private static bool ShowsHere(Item item, ShowIn where)
+        {
+            if (where == ShowIn.None || item.QuestItem)
                 return false;
 
             bool inRaid = Singleton<GameWorld>.Instantiated && !(Singleton<GameWorld>.Instance is HideoutGameWorld);
@@ -781,7 +814,7 @@ namespace PriceIndex
                     break;
                 case FleaState.Loading:
                     info.FleaValue = info.FleaText = "...";
-                    info.Loading = true;
+                    info.Loading = info.FleaLoading = true;
                     break;
                 default:
                     if (block != null)
@@ -829,7 +862,7 @@ namespace PriceIndex
             else if (loading)
             {
                 info.TraderValue = info.TraderText = "...";
-                info.Loading = true;
+                info.Loading = info.TraderLoading = true;
             }
             else if (hasContents)
             {

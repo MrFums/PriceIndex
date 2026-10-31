@@ -309,6 +309,7 @@ namespace PriceIndex
         private static GridItemView _showing;
 
         private static Item _item;
+        private static bool _money;
         private static string _name;
         private static string _baseText;
         private static string _shownText;
@@ -346,10 +347,13 @@ namespace PriceIndex
 
             try
             {
-                if (!PriceInfo.Shows(view.Item, Plugin.HoverIn.Value) || !view.Examined || !text.StartsWith(view.GetItemName(), StringComparison.Ordinal))
+                bool money = PriceInfo.ShowsMoney(view.Item, Plugin.HoverIn.Value);
+                if (!money && !PriceInfo.Shows(view.Item, Plugin.HoverIn.Value) || !view.Examined
+                    || !text.StartsWith(view.GetItemName(), StringComparison.Ordinal))
                     return;
 
                 _item = view.Item;
+                _money = money;
                 _name = view.GetItemName();
                 _baseText = text;
                 text = _shownText = Compose();
@@ -373,11 +377,11 @@ namespace PriceIndex
 
         private static string Compose()
         {
+            if (_money)
+                return ComposeMoney();
+
             PriceInfo info = PriceInfo.For(_item, Redraw.OnPrice, true);
-            Color32? nameTint = Tiers.ForName(info);
-            string head = nameTint != null && _baseText.StartsWith(_name, StringComparison.Ordinal)
-                ? Tiers.Wrap(_name, nameTint) + _baseText.Substring(_name.Length)
-                : _baseText;
+            string head = Head(Tiers.NamesOnHover ? Tiers.ForName(info) : null);
 
             Color32? tint = Tiers.ForText(info);
             string value = tint != null ? Tiers.Hexcode(tint.Value) : Value;
@@ -385,6 +389,25 @@ namespace PriceIndex
                 .Append(Colour(Label, info.FleaName + "  ")).Append(Colour(value, info.FleaText)).Append('\n')
                 .Append(Colour(Label, info.TraderName + "  ")).Append(Colour(value, info.TraderText))
                 .ToString();
+        }
+
+        private static string ComposeMoney()
+        {
+            double? worth = Prices.MoneyRoubles(_item);
+            Color32? tint = Tiers.ForMoney(worth);
+            string head = Head(Tiers.NamesOnHover ? tint : null);
+            if (worth == null)
+                return head;
+
+            string value = Tiers.TextOn && tint != null ? Tiers.Hexcode(tint.Value) : Value;
+            return head + "\n" + Colour(Label, "Worth  ") + Colour(value, Prices.Money(worth.Value, CurrencyUtil.ROUBLE_ID));
+        }
+
+        private static string Head(Color32? tint)
+        {
+            return tint != null && _baseText.StartsWith(_name, StringComparison.Ordinal)
+                ? Tiers.Wrap(_name, tint) + _baseText.Substring(_name.Length)
+                : _baseText;
         }
 
         private static string Colour(string colour, string text)
@@ -429,10 +452,20 @@ namespace PriceIndex
                 return;
 
             Item item = cell.Item;
+            if (ShowsMoney(cell, item))
+            {
+                Color32? worth = Tiers.ForMoney(Prices.MoneyRoubles(item));
+                TintCell(cell, Tiers.NamesOnItems ? worth : null, Tiers.ItemBackgroundOn ? worth : null);
+                Transform moneyTag = cell.transform.Find(LabelName);
+                if (moneyTag != null)
+                    moneyTag.gameObject.SetActive(false);
+                return;
+            }
+
             bool locked = false;
             bool shows = Shows(cell, item);
             bool tagged = Plugin.IconPrice.Value != IconPrice.Off && shows;
-            bool named = shows && Tiers.NamesOn;
+            bool named = shows && Tiers.NamesOnItems;
             bool backed = shows && Tiers.ItemBackgroundOn;
             PriceInfo info = tagged || named || backed ? PriceInfo.For(item, Redraw.OnPrice, false, NeedsFlea(tagged, named, backed)) : null;
             if (info != null && (info.Loading || info.Refreshing))
@@ -478,6 +511,7 @@ namespace PriceIndex
                 }
             }
 
+            tag.Label.fontSize = tag.BaseSize * TextScale * Plugin.TagSize.Value / 100f;
             tag.Label.fontStyle = bold ? tag.BaseStyle | FontStyles.Bold : tag.BaseStyle;
             tag.Label.color = textColour;
             tag.Tag.color = background;
@@ -497,6 +531,11 @@ namespace PriceIndex
         {
             return cell is GridItemView && cell.IsSearched && cell.Examined && PriceInfo.Shows(item, Plugin.IconIn.Value)
                    && cell.ItemContext != null && cell.ItemContext.HasViewComponent(EItemViewComponent.QuestItem);
+        }
+
+        private static bool ShowsMoney(ItemView cell, Item item)
+        {
+            return cell is GridItemView && cell.IsSearched && cell.Examined && PriceInfo.ShowsMoney(item, Plugin.IconIn.Value);
         }
 
         private static bool Warms(ItemView cell, Item item)
@@ -530,9 +569,8 @@ namespace PriceIndex
             public Color32? Name;
             public Color32? Back;
 
-            private bool nameApplied;
-            private Color nameSet;
-            private Color nameOriginal;
+            private string shownName;
+            private Color32? shownTint;
             private bool backApplied;
             private Color backSet;
             private Color backOriginal;
@@ -542,25 +580,32 @@ namespace PriceIndex
                 Apply(false);
             }
 
+            private static string Bare(string text)
+            {
+                const string open = "<color=#";
+                const string close = "</color>";
+                const int openLength = 15;
+                if (text.Length >= openLength + close.Length && text.StartsWith(open, StringComparison.Ordinal)
+                    && text[openLength - 1] == '>' && text.EndsWith(close, StringComparison.Ordinal))
+                    return text.Substring(openLength, text.Length - openLength - close.Length);
+                return text;
+            }
+
             public void Apply(bool capture)
             {
                 if (Caption != null)
                 {
-                    Color current = Caption.color;
-                    if (Name != null)
+                    string current = Caption.text ?? string.Empty;
+                    if (current != shownName || !Equals(Name, shownTint))
                     {
-                        if (capture && (!nameApplied || current != nameSet))
-                            nameOriginal = current;
-                        nameApplied = true;
-                        nameSet = Name.Value;
-                        if (current != nameSet)
-                            Caption.color = nameSet;
-                    }
-                    else if (nameApplied)
-                    {
-                        nameApplied = false;
-                        if (current == nameSet)
-                            Caption.color = nameOriginal;
+                        string bare = Bare(current);
+                        string wanted = Name != null && bare.Length > 0
+                            ? "<color=" + Tiers.Hexcode(Name.Value) + ">" + bare + "</color>"
+                            : bare;
+                        if (current != wanted)
+                            Caption.text = wanted;
+                        shownName = wanted;
+                        shownTint = Name;
                     }
                 }
 
@@ -603,10 +648,18 @@ namespace PriceIndex
                     roubles = info.TraderRoubles;
                     break;
                 default:
-                    roubles = info.FleaTotal != null || info.TraderRoubles != null
-                        ? Math.Max(info.FleaTotal ?? 0, info.TraderRoubles ?? 0)
-                        : (double?)null;
-                    locked = info.FleaLocked && (info.FleaTotal ?? 0) > (info.TraderRoubles ?? 0);
+                    if (info.Loading)
+                        return null;
+                    double? flea = info.FleaLocked ? null : info.FleaTotal;
+                    if (flea != null || info.TraderRoubles != null)
+                    {
+                        roubles = Math.Max(flea ?? 0, info.TraderRoubles ?? 0);
+                    }
+                    else
+                    {
+                        roubles = info.FleaTotal;
+                        locked = info.FleaLocked && info.FleaTotal != null;
+                    }
                     break;
             }
 
@@ -676,6 +729,7 @@ namespace PriceIndex
             placement.Label = label;
             placement.Cell = cell;
             placement.BaseStyle = label.fontStyle;
+            placement.BaseSize = count.fontSize;
             return placement;
         }
 
@@ -761,6 +815,7 @@ namespace PriceIndex
             public TextMeshProUGUI Label;
             public ItemView Cell;
             public FontStyles BaseStyle;
+            public float BaseSize;
 
             private int framesLeft;
 
@@ -783,13 +838,15 @@ namespace PriceIndex
                 if (Tag == null || Label == null || Cell == null)
                     return;
 
-                float height = Label.fontSize * TagToText;
+                float zoom = Plugin.TagSize.Value / 100f;
+                float height = BaseSize * TextScale * TagToText * zoom;
                 float scale = TagHeight / height;
                 float left = (TagLeft + HoleGap) / scale;
+                float right = RightPad * zoom;
                 Tag.pixelsPerUnitMultiplier = scale;
                 Label.rectTransform.offsetMin = new Vector2(left, 0f);
-                Label.rectTransform.offsetMax = new Vector2(-RightPad, 0f);
-                Vector2 size = new Vector2(left + Label.preferredWidth + RightPad, height);
+                Label.rectTransform.offsetMax = new Vector2(-right, 0f);
+                Vector2 size = new Vector2(left + Label.preferredWidth + right, height);
                 var rect = (RectTransform)transform;
                 rect.sizeDelta = size;
 
