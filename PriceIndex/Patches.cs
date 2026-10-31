@@ -111,10 +111,11 @@ namespace PriceIndex
             if (info.Loading || info.Refreshing)
                 Waiting.Add(panel);
 
+            Color32? tint = Tiers.ForText(info);
             return new[]
             {
-                Row(PriceRow.Flea, info.FleaName, info.FleaValue, info.FleaTip, CurrencyUtil.ROUBLE_ID),
-                Row(PriceRow.Trader, info.TraderName, info.TraderValue, info.TraderTip, info.TraderCurrency)
+                Row(PriceRow.Flea, info.FleaName, Tiers.Wrap(info.FleaValue, tint), info.FleaTip, CurrencyUtil.ROUBLE_ID),
+                Row(PriceRow.Trader, info.TraderName, Tiers.Wrap(info.TraderValue, tint), info.TraderTip, info.TraderCurrency)
             };
         }
 
@@ -308,6 +309,7 @@ namespace PriceIndex
         private static GridItemView _showing;
 
         private static Item _item;
+        private static string _name;
         private static string _baseText;
         private static string _shownText;
 
@@ -348,8 +350,9 @@ namespace PriceIndex
                     return;
 
                 _item = view.Item;
+                _name = view.GetItemName();
                 _baseText = text;
-                text = _shownText = text + Lines(_item);
+                text = _shownText = Compose();
                 delay = 0f;
             }
             catch (Exception e)
@@ -364,16 +367,23 @@ namespace PriceIndex
             if (tooltip == null || _item == null || !tooltip.Displayed || tooltip._label.text != _shownText)
                 return;
 
-            _shownText = _baseText + Lines(_item);
+            _shownText = Compose();
             tooltip.SetText(_shownText);
         }
 
-        private static string Lines(Item item)
+        private static string Compose()
         {
-            PriceInfo info = PriceInfo.For(item, Redraw.OnPrice, true);
-            return new StringBuilder("\n")
-                .Append(Colour(Label, info.FleaName + "  ")).Append(Colour(Value, info.FleaText)).Append('\n')
-                .Append(Colour(Label, info.TraderName + "  ")).Append(Colour(Value, info.TraderText))
+            PriceInfo info = PriceInfo.For(_item, Redraw.OnPrice, true);
+            Color32? nameTint = Tiers.ForName(info);
+            string head = nameTint != null && _baseText.StartsWith(_name, StringComparison.Ordinal)
+                ? Tiers.Wrap(_name, nameTint) + _baseText.Substring(_name.Length)
+                : _baseText;
+
+            Color32? tint = Tiers.ForText(info);
+            string value = tint != null ? Tiers.Hexcode(tint.Value) : Value;
+            return head + new StringBuilder("\n")
+                .Append(Colour(Label, info.FleaName + "  ")).Append(Colour(value, info.FleaText)).Append('\n')
+                .Append(Colour(Label, info.TraderName + "  ")).Append(Colour(value, info.TraderText))
                 .ToString();
         }
 
@@ -420,8 +430,20 @@ namespace PriceIndex
 
             Item item = cell.Item;
             bool locked = false;
-            bool tagged = Plugin.IconPrice.Value != IconPrice.Off && Shows(cell, item);
-            string text = tagged ? Text(cell, item, out locked) : null;
+            bool shows = Shows(cell, item);
+            bool tagged = Plugin.IconPrice.Value != IconPrice.Off && shows;
+            bool named = shows && Tiers.NamesOn;
+            bool backed = shows && Tiers.ItemBackgroundOn;
+            PriceInfo info = tagged || named || backed ? PriceInfo.For(item, Redraw.OnPrice, false, NeedsFlea(tagged, named, backed)) : null;
+            if (info != null && (info.Loading || info.Refreshing))
+                Waiting.Add(cell);
+
+            TintCell(cell, named ? Tiers.ForName(info) : null, backed ? Tiers.ForItem(info) : null);
+
+            Color32? tier = null;
+            string text = tagged ? Text(info, out locked, out tier) : null;
+            if (locked && Tiers.PricesOn)
+                tier = Tiers.Blocked;
             if (!tagged && Warms(cell, item))
                 Prices.Warm(item);
 
@@ -438,10 +460,37 @@ namespace PriceIndex
                 return;
 
             tag.Label.text = text;
-            tag.Label.color = locked ? LockedColour : TextColour;
+            Color32 textColour = locked ? LockedColour : TextColour;
+            Color background = DefaultBackground;
+            bool bold = false;
+            if (tier != null)
+            {
+                bold = true;
+                if (Tiers.TagBackgroundOn)
+                {
+                    background = Tiers.Backing(tier.Value);
+                    textColour = LightText;
+                }
+                else
+                {
+                    background = TintedTextBackground;
+                    textColour = tier.Value;
+                }
+            }
+
+            tag.Label.fontStyle = bold ? tag.BaseStyle | FontStyles.Bold : tag.BaseStyle;
+            tag.Label.color = textColour;
+            tag.Tag.color = background;
             tag.gameObject.SetActive(true);
             tag.transform.SetAsLastSibling();
             tag.Follow();
+        }
+
+        private static bool NeedsFlea(bool tagged, bool named, bool backed)
+        {
+            bool tag = tagged && Plugin.IconPrice.Value != IconPrice.Trader;
+            bool colour = (named || backed || tagged && Tiers.PricesOn) && Plugin.ColourSource.Value != ColourBy.Trader;
+            return tag || colour;
         }
 
         private static bool Shows(ItemView cell, Item item)
@@ -457,12 +506,91 @@ namespace PriceIndex
                        || Plugin.Inspect.Value != InspectStyle.Off && PriceInfo.Shows(item, Plugin.InspectIn.Value));
         }
 
-        private static string Text(ItemView cell, Item item, out bool locked)
+        private static void TintCell(ItemView cell, Color32? name, Color32? back)
         {
-            PriceInfo info = PriceInfo.For(item, Redraw.OnPrice, false);
+            CellTint holder = cell.GetComponent<CellTint>();
+            if (holder == null)
+            {
+                if (name == null && back == null)
+                    return;
+                holder = cell.gameObject.AddComponent<CellTint>();
+                holder.Caption = (cell as GridItemView)?.Caption;
+                holder.Panel = cell.ColorPanel;
+            }
+
+            holder.Name = name;
+            holder.Back = back;
+            holder.Apply(true);
+        }
+
+        private class CellTint : MonoBehaviour
+        {
+            public TextMeshProUGUI Caption;
+            public Image Panel;
+            public Color32? Name;
+            public Color32? Back;
+
+            private bool nameApplied;
+            private Color nameSet;
+            private Color nameOriginal;
+            private bool backApplied;
+            private Color backSet;
+            private Color backOriginal;
+
+            private void LateUpdate()
+            {
+                Apply(false);
+            }
+
+            public void Apply(bool capture)
+            {
+                if (Caption != null)
+                {
+                    Color current = Caption.color;
+                    if (Name != null)
+                    {
+                        if (capture && (!nameApplied || current != nameSet))
+                            nameOriginal = current;
+                        nameApplied = true;
+                        nameSet = Name.Value;
+                        if (current != nameSet)
+                            Caption.color = nameSet;
+                    }
+                    else if (nameApplied)
+                    {
+                        nameApplied = false;
+                        if (current == nameSet)
+                            Caption.color = nameOriginal;
+                    }
+                }
+
+                if (Panel != null)
+                {
+                    Color current = Panel.color;
+                    if (Back != null)
+                    {
+                        if (capture && (!backApplied || current != backSet))
+                            backOriginal = current;
+                        backApplied = true;
+                        backSet = Tiers.Panel(Back.Value);
+                        backSet.a = Mathf.Max(backOriginal.a, 0.85f);
+                        if (current != backSet)
+                            Panel.color = backSet;
+                    }
+                    else if (backApplied)
+                    {
+                        backApplied = false;
+                        if (current == backSet)
+                            Panel.color = backOriginal;
+                    }
+                }
+            }
+        }
+
+        private static string Text(PriceInfo info, out bool locked, out Color32? tier)
+        {
             locked = false;
-            if (info.Loading || info.Refreshing)
-                Waiting.Add(cell);
+            tier = Tiers.ForTag(info);
 
             double? roubles;
             switch (Plugin.IconPrice.Value)
@@ -516,7 +644,7 @@ namespace PriceIndex
             var image = tag.GetComponent<Image>();
             image.sprite = TagSprite();
             image.type = Image.Type.Sliced;
-            image.color = new Color(0f, 0f, 0f, 0.6f);
+            image.color = DefaultBackground;
             image.raycastTarget = false;
 
             TextMeshProUGUI label = UnityEngine.Object.Instantiate(count, rect, false);
@@ -547,11 +675,15 @@ namespace PriceIndex
             placement.Tag = image;
             placement.Label = label;
             placement.Cell = cell;
+            placement.BaseStyle = label.fontStyle;
             return placement;
         }
 
         private static readonly Color32 TextColour = new Color32(0xc5, 0xc3, 0xb2, 0xff);
-        private static readonly Color32 LockedColour = new Color32(0xe0, 0x8a, 0x4a, 0xff);
+        private static readonly Color DefaultBackground = new Color(0f, 0f, 0f, 0.6f);
+        private static readonly Color TintedTextBackground = new Color(0f, 0f, 0f, 0.82f);
+        private static readonly Color32 LightText = new Color32(0xf2, 0xf0, 0xe4, 0xff);
+        private static readonly Color32 LockedColour =new Color32(0xe0, 0x8a, 0x4a, 0xff);
 
         private const int TagHeight = 32;
         private const int TagPoint = 12;
@@ -628,6 +760,7 @@ namespace PriceIndex
             public Image Tag;
             public TextMeshProUGUI Label;
             public ItemView Cell;
+            public FontStyles BaseStyle;
 
             private int framesLeft;
 

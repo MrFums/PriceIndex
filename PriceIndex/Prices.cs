@@ -38,6 +38,7 @@ namespace PriceIndex
         private const string FleaRoute = "/betterflea/item-price";
         private const int MostCached = 2000;
         private const int MostInFlight = 4;
+        private const int MostPerSecond = 20;
 
         private enum BetterFlea
         {
@@ -75,10 +76,20 @@ namespace PriceIndex
                 return Pending ? FleaState.Loading : FleaState.Unavailable;
             }
 
-            public void Finish()
+            public void Finish(bool failed = false)
             {
                 Pending = false;
                 FetchedAt = Time.realtimeSinceStartup;
+                if (failed)
+                {
+                    FetchedAt -= Math.Max(0, Plugin.RefreshSeconds.Value - Redraw.RetrySeconds);
+                    Redraw.SweepIn(Redraw.RetrySeconds);
+                }
+                else
+                {
+                    Redraw.SweepIn(Plugin.RefreshSeconds.Value);
+                }
+
                 var done = Done;
                 Done = null;
                 Invoke(done);
@@ -89,7 +100,10 @@ namespace PriceIndex
         private static readonly Dictionary<string, Entry> Market = new Dictionary<string, Entry>();
         private static readonly HashSet<string> SupplyRequested = new HashSet<string>();
         private static readonly Queue<KeyValuePair<string, Entry>> Queued = new Queue<KeyValuePair<string, Entry>>();
+        private static readonly Queue<KeyValuePair<string, Entry>> MarketQueued = new Queue<KeyValuePair<string, Entry>>();
         private static int _inFlight;
+        private static float _secondStart = float.NegativeInfinity;
+        private static int _sentThisSecond;
 
         private static void Invoke(Action action)
         {
@@ -114,7 +128,8 @@ namespace PriceIndex
 
         public static void Warm(Item item)
         {
-            TryGetFlea(item, out _, out _, null, false);
+            if (!FleaOff)
+                TryGetFlea(item, out _, out _, null, false);
 
             var session = Session;
             if (session?.Traders == null)
@@ -130,6 +145,9 @@ namespace PriceIndex
         {
             price = 0;
             exact = false;
+            if (FleaOff)
+                return FleaState.Unavailable;
+
             switch (CheckBetterFlea(onReady))
             {
                 case BetterFlea.Unknown:
@@ -143,13 +161,45 @@ namespace PriceIndex
                     break;
             }
 
-            return TryGetAverage(item, out price, onReady);
+            return TryGetAverage(item, out price, onReady, urgent);
         }
 
         public static void Update()
         {
             if (_betterFlea == BetterFlea.Unknown)
                 CheckBetterFlea(null);
+            SendQueued();
+        }
+
+        private static bool FleaOff => RagFair.Settings != null && !RagFair.Settings.enabled;
+
+        private static bool CanSend()
+        {
+            float now = Time.realtimeSinceStartup;
+            if (now - _secondStart >= 1f)
+            {
+                _secondStart = now;
+                _sentThisSecond = 0;
+            }
+
+            return _inFlight < MostInFlight && _sentThisSecond < MostPerSecond;
+        }
+
+        private static void SendQueued()
+        {
+            while (Queued.Count > 0 && CanSend())
+            {
+                var next = Queued.Dequeue();
+                if (next.Value.Waiting)
+                    SendFlea(next.Key, next.Value);
+            }
+
+            while (MarketQueued.Count > 0 && CanSend())
+            {
+                var next = MarketQueued.Dequeue();
+                if (next.Value.Waiting)
+                    SendMarket(next.Key, next.Value);
+            }
         }
 
         private static BetterFlea CheckBetterFlea(Action onDone)
@@ -230,7 +280,7 @@ namespace PriceIndex
         private static void RequestFlea(string body, Entry entry, bool urgent)
         {
             entry.Pending = true;
-            if (!urgent && _inFlight >= MostInFlight)
+            if (!urgent && !CanSend())
             {
                 entry.Waiting = true;
                 Queued.Enqueue(new KeyValuePair<string, Entry>(body, entry));
@@ -244,30 +294,31 @@ namespace PriceIndex
         {
             entry.Waiting = false;
             _inFlight++;
+            _sentThisSecond++;
+            bool failed = false;
             try
             {
                 double price = await Post(body);
+                bool known = price > 0;
+                if (known != entry.Known || known && price != entry.Price)
+                    Redraw.Changed();
                 entry.Price = price;
-                entry.Known = price > 0;
+                entry.Known = known;
             }
             catch (Exception e)
             {
+                failed = true;
                 Plugin.Log.LogWarning($"Could not get a Better Flea price: {e.Message}");
             }
             finally
             {
                 _inFlight--;
-                entry.Finish();
-                while (Queued.Count > 0 && _inFlight < MostInFlight)
-                {
-                    var next = Queued.Dequeue();
-                    if (next.Value.Waiting)
-                        SendFlea(next.Key, next.Value);
-                }
+                entry.Finish(failed);
+                SendQueued();
             }
         }
 
-        private static FleaState TryGetAverage(Item item, out double price, Action onReady)
+        private static FleaState TryGetAverage(Item item, out double price, Action onReady, bool urgent)
         {
             price = 0;
             List<Item> parts = item is Weapon
@@ -278,7 +329,7 @@ namespace PriceIndex
             bool refreshing = false;
             foreach (Item part in parts)
             {
-                FleaState state = TryGetMarket(part.TemplateId.ToString(), out double average, onReady);
+                FleaState state = TryGetMarket(part.TemplateId.ToString(), out double average, onReady, urgent);
                 if (state == FleaState.Loading)
                     loading = true;
                 else if (state == FleaState.Refreshing)
@@ -299,28 +350,59 @@ namespace PriceIndex
             return refreshing ? FleaState.Refreshing : FleaState.Ready;
         }
 
-        private static FleaState TryGetMarket(string tpl, out double average, Action onReady)
+        private static FleaState TryGetMarket(string tpl, out double average, Action onReady, bool urgent)
         {
             if (!Market.TryGetValue(tpl, out var entry))
                 Market[tpl] = entry = new Entry();
 
-            var session = Session;
-            if (entry.Stale && session != null)
-            {
-                entry.Pending = true;
-                session.GetMarketPrices(tpl, result =>
-                {
-                    if (result.Succeed && result.Value != null)
-                    {
-                        entry.Price = result.Value.avg;
-                        entry.Known = true;
-                    }
-
-                    entry.Finish();
-                });
-            }
+            if (entry.Stale && Session != null)
+                RequestMarket(tpl, entry, urgent);
+            else if (urgent && entry.Waiting)
+                SendMarket(tpl, entry);
 
             return entry.Read(onReady, out average);
+        }
+
+        private static void RequestMarket(string tpl, Entry entry, bool urgent)
+        {
+            entry.Pending = true;
+            if (!urgent && !CanSend())
+            {
+                entry.Waiting = true;
+                MarketQueued.Enqueue(new KeyValuePair<string, Entry>(tpl, entry));
+                return;
+            }
+
+            SendMarket(tpl, entry);
+        }
+
+        private static void SendMarket(string tpl, Entry entry)
+        {
+            entry.Waiting = false;
+            var session = Session;
+            if (session == null)
+            {
+                entry.Finish(true);
+                return;
+            }
+
+            _inFlight++;
+            _sentThisSecond++;
+            session.GetMarketPrices(tpl, result =>
+            {
+                _inFlight--;
+                bool failed = !result.Succeed;
+                if (result.Succeed && result.Value != null)
+                {
+                    if (!entry.Known || result.Value.avg != entry.Price)
+                        Redraw.Changed();
+                    entry.Price = result.Value.avg;
+                    entry.Known = true;
+                }
+
+                entry.Finish(failed);
+                SendQueued();
+            });
         }
 
         private static double Quality(Item item)
@@ -582,8 +664,36 @@ namespace PriceIndex
 
     internal static class Redraw
     {
+        public const float RetrySeconds = 10f;
+        private const float SweepGap = 0.25f;
+
         public static readonly Action OnPrice = () => _due = true;
         private static bool _due;
+        private static bool _changed;
+        private static float _sweepAt = float.PositiveInfinity;
+        private static float _lastSweep = float.NegativeInfinity;
+
+        public static void Changed()
+        {
+            _changed = true;
+        }
+
+        public static void SweepIn(float seconds)
+        {
+            _sweepAt = Math.Min(_sweepAt, Time.realtimeSinceStartup + seconds);
+        }
+
+        public static bool SweepDue()
+        {
+            float now = Time.realtimeSinceStartup;
+            if (now - _lastSweep < SweepGap || !_changed && now < _sweepAt)
+                return false;
+
+            _lastSweep = now;
+            _changed = false;
+            _sweepAt = float.PositiveInfinity;
+            return true;
+        }
 
         public static bool Due()
         {
@@ -599,6 +709,7 @@ namespace PriceIndex
         public bool Loading;
         public bool Refreshing;
         public bool FleaLocked;
+        public bool FleaBanned;
         public int Count = 1;
 
         public string FleaName = "Flea market";
@@ -625,7 +736,7 @@ namespace PriceIndex
             return (where & (inRaid ? ShowIn.Raid : ShowIn.Stash)) != 0;
         }
 
-        public static PriceInfo For(Item item, Action onReady, bool urgent)
+        public static PriceInfo For(Item item, Action onReady, bool urgent, bool flea = true)
         {
             int stack = Math.Max(1, item.StackObjectsCount);
             int count = ShopStock(item) ? 1 : stack;
@@ -634,7 +745,9 @@ namespace PriceIndex
 
             var fleaTip = new StringBuilder();
             string block = Prices.FleaBlock(item);
-            FleaState state = Prices.TryGetFlea(item, out double each, out bool exact, onReady, urgent);
+            double each = 0;
+            bool exact = false;
+            FleaState state = flea ? Prices.TryGetFlea(item, out each, out exact, onReady, urgent) : FleaState.Unavailable;
             info.Refreshing = state == FleaState.Refreshing;
             switch (state)
             {
@@ -644,6 +757,7 @@ namespace PriceIndex
                     info.FleaEach = each;
                     info.FleaTotal = total;
                     info.FleaLocked = block != null;
+                    info.FleaBanned = block != null;
                     if (info.FleaLocked)
                         info.FleaName = "Flea market (locked)";
                     info.FleaValue = Amount(each, total, count, null);
@@ -672,6 +786,7 @@ namespace PriceIndex
                 default:
                     if (block != null)
                     {
+                        info.FleaBanned = true;
                         info.FleaValue = info.FleaText = "Can't be listed";
                         fleaTip.Append(block);
                     }
