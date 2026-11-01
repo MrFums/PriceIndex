@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.2.0 (RC2)
+## 1.2.0 (RC3)
 
 - New **4. Colours** section: colour items by how much they're worth, with 5 price tiers. Each tier has a min price and a colour picker. The defaults run grey, green, blue, purple and gold, from 0 up to 250k. Colours are off until you tick **Colours**, then item backgrounds are coloured.
 - **Colour item names**: the item's name on the item, in the hover tooltip, or both.
@@ -16,6 +16,7 @@
 - A failed price request is tried again after 10 seconds instead of keeping the old price.
 - When a price changes, every item of that kind updates together, without moving it.
 - Fixed lag spikes from RC1 when items are moved, revealed or unloaded from mags. Only a price that changed redraws every item, and the redraw is spread over a few frames.
+- When the price cache is full, the oldest prices are dropped instead of all of them at once, so items no longer flicker and reload after a long session.
 
 ## 1.1.0
 

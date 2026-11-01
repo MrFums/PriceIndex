@@ -59,6 +59,7 @@ namespace PriceIndex
             public bool Pending;
             public bool Waiting;
             public Action Done;
+            public LinkedListNode<string> Used;
 
             public bool Stale => !Pending && Time.realtimeSinceStartup - FetchedAt > Plugin.RefreshSeconds.Value;
 
@@ -97,6 +98,7 @@ namespace PriceIndex
         }
 
         private static readonly Dictionary<string, Entry> Flea = new Dictionary<string, Entry>();
+        private static readonly LinkedList<string> FleaOrder = new LinkedList<string>();
         private static readonly Dictionary<string, Entry> Market = new Dictionary<string, Entry>();
         private static readonly HashSet<string> SupplyRequested = new HashSet<string>();
         private static readonly Queue<KeyValuePair<string, Entry>> Queued = new Queue<KeyValuePair<string, Entry>>();
@@ -265,9 +267,18 @@ namespace PriceIndex
             string body = Serialize(item);
             if (!Flea.TryGetValue(body, out var entry))
             {
-                if (Flea.Count >= MostCached)
-                    Flea.Clear();
+                while (Flea.Count >= MostCached && FleaOrder.First != null)
+                {
+                    Flea.Remove(FleaOrder.First.Value);
+                    FleaOrder.RemoveFirst();
+                }
                 Flea[body] = entry = new Entry();
+                entry.Used = FleaOrder.AddLast(body);
+            }
+            else
+            {
+                FleaOrder.Remove(entry.Used);
+                FleaOrder.AddLast(entry.Used);
             }
 
             if (entry.Stale)
