@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.2.0
+
+### Colours
+- New **4. Colours** section in F12: colour items by how much they're worth, with 5 price tiers. Each tier has its own minimum price and a colour picker (click the swatch for sliders, or type a hex code). The defaults run grey, green, blue, purple and gold, from 0 up to 250k.
+- Colours are off until you tick **Colours**. Then item backgrounds are coloured, with a strength slider.
+- **Colour item names**: on the item, in the hover tooltip, or both.
+- **Colour prices**: the price text, a coloured background on the price tag, or both.
+- **Colours based on**: the flea price, the best trader's, or whichever pays more.
+- Items that can't be sold show in red (**Unsellable colour**).
+- Colours stay put as things get used up, each with its own switch: ammo is coloured by what 100 rounds are worth, mags as if fully loaded, money by a full stack, and banned ammo by its flea price so it still ranks by how good it is.
+- Roubles, dollars and euros are coloured too. Hover them to see what the stack is worth in roubles.
+
+### Prices
+- Prices are ready before you open the stash. Your stash and gear are priced as soon as you reach the menu, and again after each raid, so colours and prices never pop in.
+- With Better Flea 2.5.1 or newer, the whole stash is priced in a handful of requests. Items that turn up later are asked for together.
+- Without Better Flea, flea prices come from the price list the game already downloads, so they're instant and send no requests.
+- **Price on items** set to Most skips a flea price you can't get yet and shows the trader's price, unless no trader buys it.
+- New **Price tag size on items** slider.
+
+### Fixes
+- Price requests are limited to 20 a second, with hover and inspect first, so a big stash no longer floods the server. This fixes the SSL errors some players saw.
+- After 3 failed price requests in a row, requests pause for 10 seconds, then longer up to a minute, so a struggling connection isn't flooded.
+- A failed price request is tried again after 10 seconds.
+- When a price changes, every item of that kind updates together.
+- Redrawing prices is spread over a few frames, so moving, looting or unloading items doesn't stutter.
+
 ## 1.1.0
 
 - The hover tooltip opens straight away instead of after the game's 0.6 second delay.
