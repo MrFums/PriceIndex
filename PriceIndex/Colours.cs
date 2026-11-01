@@ -38,7 +38,7 @@ namespace PriceIndex
 
         public static bool ShowsBanned(Item item)
         {
-            if (!Plugin.HighlightBanned.Value || !Prices.IsFleaBanned(item))
+            if (!Plugin.ColourEnabled.Value || !Plugin.HighlightBanned.Value || !Prices.IsFleaBanned(item))
                 return false;
             return !(item is Ammo && ItemBackgroundOn && Plugin.ColourBannedAmmo.Value);
         }

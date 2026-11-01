@@ -49,7 +49,7 @@ Colour items by how much they're worth. Off by default: tick **Colours** to turn
 - **Colour item names**: on the item, in the hover tooltip, or both (the default).
 - **Colour prices**: the price text, a coloured background on the price tag, or both.
 - **Unsellable colour**: items that can't be sold.
-- **Highlight flea-banned items** (on by default): items the flea has banned get their own background colour, red by default. Works even with Colours off. With Colour item names on, the name uses this colour too.
+- **Highlight flea-banned items** (on by default): items the flea has banned get their own background colour, red by default. On whenever Colours is on, and can be turned off on its own. With Colour item names on, the name uses this colour too.
 - **Colour stacks by type**, **Colour mags as fully loaded**, **Colour money as full stack** and **Colour banned ammo by flea price** keep colours steady as things get used up. Ammo is coloured by what 100 rounds are worth, so it spreads across the tiers.
 
 ## Other mods

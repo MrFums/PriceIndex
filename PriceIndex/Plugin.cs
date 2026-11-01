@@ -212,7 +212,7 @@ namespace PriceIndex
 
             HighlightBanned = Config.Bind(colours, "Highlight flea-banned items", true,
                 Describe("Give items the flea has banned a background of their own colour, instead of a colour from the trader's price. "
-                         + "Works even with Colours unticked. Only real bans count, not items locked by flea level or found in raid. "
+                         + "Needs Colours ticked. Only real bans count, not items locked by flea level or found in raid. "
                          + "With Colour item names on, the name uses this colour too. "
                          + "Banned ammo keeps its tier colour while Colour banned ammo by flea price is on.", 69));
             BannedColour = Config.Bind(colours, "Flea-banned colour", (Color)new Color32(0xff, 0x00, 0x00, 0xff),
