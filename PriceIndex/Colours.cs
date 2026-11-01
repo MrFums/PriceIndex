@@ -142,31 +142,32 @@ namespace PriceIndex
             if (!NamesOn && !PricesOn && !ItemBackgroundOn)
                 return null;
 
-            double? flea = info.FleaBanned ? null : info.FleaTotal;
+            bool banned = info.FleaBanned && !(info.IsAmmo && Plugin.ColourBannedAmmo.Value && info.ColourFlea != null);
+            double? flea = banned ? null : info.ColourFlea;
             double? roubles;
             switch (Plugin.ColourSource.Value)
             {
                 case ColourBy.Flea:
                     if (info.FleaLoading)
                         return null;
-                    if (info.FleaBanned)
+                    if (banned)
                         return Blocked;
                     roubles = flea;
                     break;
                 case ColourBy.Trader:
                     if (info.TraderLoading)
                         return null;
-                    roubles = info.TraderRoubles;
+                    roubles = info.ColourTrader;
                     if (roubles == null)
                         return Blocked;
                     break;
                 default:
                     if (info.Loading)
                         return null;
-                    roubles = flea != null || info.TraderRoubles != null
-                        ? Math.Max(flea ?? 0, info.TraderRoubles ?? 0)
+                    roubles = flea != null || info.ColourTrader != null
+                        ? Math.Max(flea ?? 0, info.ColourTrader ?? 0)
                         : (double?)null;
-                    if (roubles == null && (info.FleaBanned || info.FleaTotal == null))
+                    if (roubles == null && (banned || info.ColourFlea == null))
                         return Blocked;
                     break;
             }

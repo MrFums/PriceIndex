@@ -18,8 +18,8 @@ If you can't list an item on the flea yet (flea level, found in raid only, or Be
 ## Made for Better Flea
 Price Index is made to be used with [Better Flea](https://github.com/MrFums/BetterFlea), but works fine without it.
 
-- **With Better Flea 2.3.0 or newer** on the server, the flea price is Better Flea's own price for that exact item, with its price multiplier, marked key multiplier and Wipe Cycle applied.
-- **Without it**, or with an older Better Flea, the flea price is worked out from the base game's flea prices.
+- **With Better Flea 2.3.0 or newer** on the server, the flea price is Better Flea's own price for that exact item, with its price multiplier, marked key multiplier and Wipe Cycle applied. With **2.5.1 or newer**, your whole stash is priced in a handful of requests when you reach the menu.
+- **Without it**, or with an older Better Flea, the flea price is worked out from the base game's flea prices, which the game already has, so it's instant.
 
 The flea row's tooltip says which one you're looking at.
 
@@ -37,7 +37,19 @@ Press **F12** in game > Fums-PriceIndex.
 - **Price position on items**: bottom left, stepped up past the game's own icons, or halfway up the left edge.
 - **Stacks**: price one item, the whole stack, or both.
 - **Shows in**: the inspect window, hover tooltip and price on items each have their own. Tick Stash, Raid, or both.
+- **Price tag size on items**: make the price tag bigger or smaller.
 - **Include Fence**, and how often flea prices are asked for again.
+
+### Colours
+Colour items by how much they're worth. Off by default: tick **Colours** to turn it on.
+
+- **Tiers**: 5 tiers, each with a minimum price and a colour. Click the colour for sliders, or type a hex code. The defaults run grey, green, blue, purple and gold, from 0 up to 250k.
+- **Colours based on**: the flea price, the best trader's, or whichever pays more.
+- **Colour item backgrounds** (on by default), with a strength slider.
+- **Colour item names**: on the item, in the hover tooltip, or both.
+- **Colour prices**: the price text, a coloured background on the price tag, or both.
+- **Unsellable colour**: items that can't be sold.
+- **Colour stacks by type**, **Colour mags as fully loaded**, **Colour money as full stack** and **Colour banned ammo by flea price** keep colours steady as things get used up. Ammo is coloured by what 100 rounds are worth, so it spreads across the tiers.
 
 ## Other mods
 - **Choo² Trader Modding**: its price tags sit on the same items. Turn off its "Show price tags on items" and "Show flea price tags", or turn off Price Index's **Price on items**.

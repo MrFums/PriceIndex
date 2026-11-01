@@ -94,6 +94,10 @@ namespace PriceIndex
         internal static ConfigEntry<PriceColour> ColourPrices;
         internal static ConfigEntry<bool> ColourItems;
         internal static ConfigEntry<int> ColourStrength;
+        internal static ConfigEntry<bool> ColourFullStacks;
+        internal static ConfigEntry<bool> ColourFullMags;
+        internal static ConfigEntry<bool> ColourFullMoney;
+        internal static ConfigEntry<bool> ColourBannedAmmo;
         internal static readonly ConfigEntry<int>[] TierMin = new ConfigEntry<int>[Tiers.Count];
         internal static readonly ConfigEntry<Color>[] TierColour = new ConfigEntry<Color>[Tiers.Count];
 
@@ -172,6 +176,19 @@ namespace PriceIndex
             ColourStrength = Config.Bind(colours, "Item background strength", 25,
                 Describe("How bright an item's background colour is, as a percentage of the tier colour. Lower is darker and softer.", 95,
                     new AcceptableValueRange<int>(10, 100)));
+            ColourFullStacks = Config.Bind(colours, "Colour stacks by type", true,
+                Describe("Colour ammo by what 100 rounds are worth, and other stacks by what a full stack is worth, "
+                         + "so the colour stays the same as the stack gets used up and ammo spreads across the tiers. "
+                         + "Untick to colour by the stack you have.", 94));
+            ColourFullMags = Config.Bind(colours, "Colour mags as fully loaded", true,
+                Describe("Colour mags, and guns with mags in them, as if the mags were full of the ammo already in them, "
+                         + "so firing doesn't change the colour. An empty mag is coloured as an empty mag. Untick to colour by the rounds in it.", 93));
+            ColourFullMoney = Config.Bind(colours, "Colour money as full stack", true,
+                Describe("Colour roubles, dollars and euros by what a full stack is worth, so each currency always has the same colour. "
+                         + "Untick to colour by how much the stack holds.", 92));
+            ColourBannedAmmo = Config.Bind(colours, "Colour banned ammo by flea price", true,
+                Describe("Colour ammo by its flea price even when the flea has banned or locked it, so the colour shows how good the ammo is. "
+                         + "The price on the item still shows what you can sell it for. Untick to colour banned ammo like other banned items.", 91));
             for (int i = 0; i < Tiers.Count; i++)
             {
                 TierColour[i] = Config.Bind(colours, $"Tier {i + 1} colour", TierColourDefaults[i],
@@ -196,6 +213,10 @@ namespace PriceIndex
             ColourPrices.SettingChanged += (_, __) => ColoursChanged();
             ColourItems.SettingChanged += (_, __) => ColoursChanged();
             ColourStrength.SettingChanged += (_, __) => ColoursChanged();
+            ColourFullStacks.SettingChanged += (_, __) => ColoursChanged();
+            ColourFullMags.SettingChanged += (_, __) => ColoursChanged();
+            ColourFullMoney.SettingChanged += (_, __) => ColoursChanged();
+            ColourBannedAmmo.SettingChanged += (_, __) => ColoursChanged();
             ColourSource.SettingChanged += (_, __) => ColoursChanged();
 
             var harmony = new Harmony(Guid);

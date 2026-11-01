@@ -394,7 +394,7 @@ namespace PriceIndex
         private static string ComposeMoney()
         {
             double? worth = Prices.MoneyRoubles(_item);
-            Color32? tint = Tiers.ForMoney(worth);
+            Color32? tint = Tiers.ForMoney(Prices.MoneyColourRoubles(_item));
             string head = Head(Tiers.NamesOnHover ? tint : null);
             if (worth == null)
                 return head;
@@ -462,7 +462,10 @@ namespace PriceIndex
             Item item = cell.Item;
             if (ShowsMoney(cell, item))
             {
-                Color32? worth = Tiers.ForMoney(Prices.MoneyRoubles(item));
+                double? roubles = Prices.MoneyColourRoubles(item);
+                if (roubles == null)
+                    Waiting.Add(cell);
+                Color32? worth = Tiers.ForMoney(roubles);
                 TintCell(cell, Tiers.NamesOnItems ? worth : null, Tiers.ItemBackgroundOn ? worth : null);
                 Transform moneyTag = cell.transform.Find(LabelName);
                 if (moneyTag != null)
