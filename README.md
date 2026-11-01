@@ -41,14 +41,15 @@ Press **F12** in game > Fums-PriceIndex.
 - **Include Fence**, and how often flea prices are asked for again.
 
 ### Colours
-Colour items by how much they're worth. Off by default: tick **Colours** to turn it on.
+Colour items by how much they're worth. On by default, with item names and backgrounds coloured. Untick **Colours** to turn it all off.
 
 - **Tiers**: 5 tiers, each with a minimum price and a colour. Click the colour for sliders, or type a hex code. The defaults run grey, green, blue, purple and gold, from 0 up to 250k.
 - **Colours based on**: the flea price, the best trader's, or whichever pays more.
 - **Colour item backgrounds** (on by default), with a strength slider.
-- **Colour item names**: on the item, in the hover tooltip, or both.
+- **Colour item names**: on the item, in the hover tooltip, or both (the default).
 - **Colour prices**: the price text, a coloured background on the price tag, or both.
 - **Unsellable colour**: items that can't be sold.
+- **Highlight flea-banned items** (on by default): items the flea has banned get their own background colour, red by default. Works even with Colours off.
 - **Colour stacks by type**, **Colour mags as fully loaded**, **Colour money as full stack** and **Colour banned ammo by flea price** keep colours steady as things get used up. Ammo is coloured by what 100 rounds are worth, so it spreads across the tiers.
 
 ## Other mods

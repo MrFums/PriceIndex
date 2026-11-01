@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.1
+
+- Colours are now on by default, with item names and item backgrounds coloured. New default colours: **Unsellable colour** #b48787 and **Flea-banned colour** red. Your saved settings aren't changed.
+- New **Highlight flea-banned items** (on by default) and **Flea-banned colour** (red): items the flea has banned get a background of their own colour, instead of a colour from the trader's price. Works even with Colours off. Only real bans count, not items locked by flea level or found in raid. With Better Flea, its ban list is used; without it, the game's own bans.
+- Banned ammo keeps its tier colour while **Colour banned ammo by flea price** is on.
+
 ## 1.2.0
 
 ### Colours

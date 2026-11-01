@@ -482,7 +482,10 @@ namespace PriceIndex
             if (info != null && (info.Loading || info.Refreshing))
                 Waiting.Add(cell);
 
-            TintCell(cell, named ? Tiers.ForName(info) : null, backed ? Tiers.ForItem(info) : null);
+            Color32? back = backed ? Tiers.ForItem(info) : null;
+            if (shows && Tiers.ShowsBanned(item))
+                back = Tiers.Banned;
+            TintCell(cell, named ? Tiers.ForName(info) : null, back);
 
             Color32? tier = null;
             string text = tagged ? Text(info, out locked, out tier) : null;

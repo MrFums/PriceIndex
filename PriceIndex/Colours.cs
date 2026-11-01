@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using EFT.InventoryLogic;
 using UnityEngine;
 
 namespace PriceIndex
@@ -24,6 +25,22 @@ namespace PriceIndex
                 Color picked = Plugin.ColourBlocked.Value;
                 return new Color32((byte)Mathf.RoundToInt(picked.r * 255f), (byte)Mathf.RoundToInt(picked.g * 255f), (byte)Mathf.RoundToInt(picked.b * 255f), 0xff);
             }
+        }
+
+        public static Color32 Banned
+        {
+            get
+            {
+                Color picked = Plugin.BannedColour.Value;
+                return new Color32((byte)Mathf.RoundToInt(picked.r * 255f), (byte)Mathf.RoundToInt(picked.g * 255f), (byte)Mathf.RoundToInt(picked.b * 255f), 0xff);
+            }
+        }
+
+        public static bool ShowsBanned(Item item)
+        {
+            if (!Plugin.HighlightBanned.Value || !Prices.IsFleaBanned(item))
+                return false;
+            return !(item is Ammo && ItemBackgroundOn && Plugin.ColourBannedAmmo.Value);
         }
 
         public static void Invalidate()

@@ -73,7 +73,7 @@ namespace PriceIndex
     {
         public const string Guid = "com.fums.priceindex";
         public const string Name = "Fums-PriceIndex";
-        public const string Version = "1.2.0";
+        public const string Version = "1.2.1";
 
         internal static ManualLogSource Log;
 
@@ -98,6 +98,8 @@ namespace PriceIndex
         internal static ConfigEntry<bool> ColourFullMags;
         internal static ConfigEntry<bool> ColourFullMoney;
         internal static ConfigEntry<bool> ColourBannedAmmo;
+        internal static ConfigEntry<bool> HighlightBanned;
+        internal static ConfigEntry<Color> BannedColour;
         internal static readonly ConfigEntry<int>[] TierMin = new ConfigEntry<int>[Tiers.Count];
         internal static readonly ConfigEntry<Color>[] TierColour = new ConfigEntry<Color>[Tiers.Count];
 
@@ -158,12 +160,12 @@ namespace PriceIndex
                     new AcceptableValueRange<int>(10, 1800)));
 
             const string colours = "4. Colours";
-            ColourEnabled = Config.Bind(colours, "Colours", false,
+            ColourEnabled = Config.Bind(colours, "Colours", true,
                 Describe("Colour things by how much the item is worth, using the tiers below. Untick to turn all colours off.", 100));
             ColourSource = Config.Bind(colours, "Colours based on", ColourBy.Most,
                 Describe("Which price picks the tier. Most: whichever pays more, the flea or the best trader. "
                          + "Flea: the flea price. Trader: the best trader's.", 99));
-            ColourNames = Config.Bind(colours, "Colour item names", NameColour.Off,
+            ColourNames = Config.Bind(colours, "Colour item names", NameColour.Both,
                 Describe("Colour the item's name. OnItems: on the item in the stash and inventory. OnHover: in the hover tooltip. "
                          + "Both: in both places. Money is coloured by how much the stack is worth.", 98));
             ColourPrices = Config.Bind(colours, "Colour prices", PriceColour.Off,
@@ -203,10 +205,19 @@ namespace PriceIndex
                 TierColour[i].SettingChanged += (_, __) => ColoursChanged();
             }
 
-            ColourBlocked = Config.Bind(colours, "Unsellable colour", (Color)new Color32(0xff, 0x52, 0x52, 0xff),
+            ColourBlocked = Config.Bind(colours, "Unsellable colour", (Color)new Color32(0xb4, 0x87, 0x87, 0xff),
                 Describe("The colour for an item that can't be sold. With Flea: the flea has banned it. With Trader: no trader buys it. "
                          + "With Most: the flea has banned it and no trader buys it either.", 70, drawer: ColourField.Draw));
             ColourBlocked.SettingChanged += (_, __) => ColoursChanged();
+
+            HighlightBanned = Config.Bind(colours, "Highlight flea-banned items", true,
+                Describe("Give items the flea has banned a background of their own colour, instead of a colour from the trader's price. "
+                         + "Works even with Colours unticked. Only real bans count, not items locked by flea level or found in raid. "
+                         + "Banned ammo keeps its tier colour while Colour banned ammo by flea price is on.", 69));
+            BannedColour = Config.Bind(colours, "Flea-banned colour", (Color)new Color32(0xff, 0x00, 0x00, 0xff),
+                Describe("The background colour for items the flea has banned.", 68, drawer: ColourField.Draw));
+            HighlightBanned.SettingChanged += (_, __) => ColoursChanged();
+            BannedColour.SettingChanged += (_, __) => ColoursChanged();
 
             ColourEnabled.SettingChanged += (_, __) => ColoursChanged();
             ColourNames.SettingChanged += (_, __) => ColoursChanged();

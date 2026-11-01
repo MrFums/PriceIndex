@@ -37,6 +37,7 @@ namespace PriceIndex
         private const string FenceId = "579dc571d53a0658a154fbec";
         private const string FleaRoute = "/betterflea/item-price";
         private const string BatchRoute = "/betterflea/item-prices";
+        private const string ClientDataRoute = "/betterflea/client-data";
         private const int MostCached = 4000;
         private const int MostPerBatch = 250;
         private const double PreloadBudget = 2d;
@@ -133,6 +134,8 @@ namespace PriceIndex
         private static int _failures;
         private static float _pausedUntil = float.NegativeInfinity;
         private static float _nextPause = FirstPause;
+        private static HashSet<string> _bannedList;
+        private static bool _bannedFetching;
         private static readonly List<Item> PreloadItems = new List<Item>();
         private static int _preloadNext;
         private static bool _preloaded;
@@ -237,6 +240,7 @@ namespace PriceIndex
 
             if (!_preloaded)
             {
+                FetchBans();
                 var inventory = Session?.Profile?.Inventory;
                 if (inventory == null)
                     return;
@@ -523,6 +527,51 @@ namespace PriceIndex
             return answer?.Prices ?? throw new Exception("the server sent no prices back");
         }
 
+        public static bool IsFleaBanned(Item item)
+        {
+            if (item?.Template == null)
+                return false;
+            if (_bannedList != null)
+                return _bannedList.Contains(item.TemplateId.ToString());
+            return !item.Template.CanSellOnRagfair;
+        }
+
+        private static async void FetchBans()
+        {
+            if (_bannedFetching)
+                return;
+            _bannedFetching = true;
+            try
+            {
+                Client client = RequestHandler.HttpClient;
+                using (HttpRequestMessage request = client.CreateNewHttpRequest(HttpMethod.Get, ClientDataRoute))
+                using (HttpResponseMessage response = await client.HttpClient.SendAsync(request))
+                {
+                    if (!response.IsSuccessStatusCode)
+                        throw new Exception("the server answered " + (int)response.StatusCode);
+                    byte[] data = await response.Content.ReadAsByteArrayAsync();
+                    if (Zlib.IsCompressed(data))
+                        data = Zlib.Decompress(data);
+                    var answer = JsonConvert.DeserializeObject<BanAnswer>(Encoding.UTF8.GetString(data));
+                    if (answer?.FleaBanned != null)
+                    {
+                        var list = new HashSet<string>(answer.FleaBanned);
+                        if (_bannedList == null || !_bannedList.SetEquals(list))
+                            Redraw.Changed();
+                        _bannedList = list;
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogWarning($"Could not get Better Flea's banned items: {e.Message}");
+            }
+            finally
+            {
+                _bannedFetching = false;
+            }
+        }
+
         private static async Task<string> PostText(string route, string body)
         {
             Client client = RequestHandler.HttpClient;
@@ -664,6 +713,11 @@ namespace PriceIndex
         private class BatchAnswer
         {
             public List<double> Prices { get; set; }
+        }
+
+        private class BanAnswer
+        {
+            public List<string> FleaBanned { get; set; }
         }
 
         private static string Serialize(Item root)
