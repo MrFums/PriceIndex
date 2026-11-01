@@ -251,6 +251,8 @@ namespace PriceIndex
                 IconPatches.RedrawAll();
                 TooltipPatches.RedrawWaiting();
             }
+
+            IconPatches.Update();
         }
     }
 }

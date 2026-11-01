@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.2.0 (RC1)
+## 1.2.0 (RC2)
 
 - New **4. Colours** section: colour items by how much they're worth, with 5 price tiers. Each tier has a min price and a colour picker. The defaults run grey, green, blue, purple and gold, from 0 up to 250k. Colours are off until you tick **Colours**, then item backgrounds are coloured.
 - **Colour item names**: the item's name on the item, in the hover tooltip, or both.
@@ -15,6 +15,7 @@
 - Price tags set to Trader no longer ask for flea prices, and nothing asks for flea prices when the flea is turned off on the server.
 - A failed price request is tried again after 10 seconds instead of keeping the old price.
 - When a price changes, every item of that kind updates together, without moving it.
+- Fixed lag spikes from RC1 when items are moved, revealed or unloaded from mags. Only a price that changed redraws every item, and the redraw is spread over a few frames.
 
 ## 1.1.0
 

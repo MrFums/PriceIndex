@@ -300,7 +300,7 @@ namespace PriceIndex
             {
                 double price = await Post(body);
                 bool known = price > 0;
-                if (known != entry.Known || known && price != entry.Price)
+                if (entry.Known && (!known || price != entry.Price))
                     Redraw.Changed();
                 entry.Price = price;
                 entry.Known = known;
@@ -394,7 +394,7 @@ namespace PriceIndex
                 bool failed = !result.Succeed;
                 if (result.Succeed && result.Value != null)
                 {
-                    if (!entry.Known || result.Value.avg != entry.Price)
+                    if (entry.Known && result.Value.avg != entry.Price)
                         Redraw.Changed();
                     entry.Price = result.Value.avg;
                     entry.Known = true;

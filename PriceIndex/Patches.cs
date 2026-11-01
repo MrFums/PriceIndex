@@ -421,7 +421,12 @@ namespace PriceIndex
         private const string LabelName = "PriceIndexPriceTag";
         private const float Padding = 2f;
 
+        private const double FrameBudget = 2d;
+
         private static readonly HashSet<ItemView> Waiting = new HashSet<ItemView>();
+        private static readonly HashSet<ItemView> Drawn = new HashSet<ItemView>();
+        private static readonly Queue<ItemView> Due = new Queue<ItemView>();
+        private static readonly HashSet<ItemView> InLine = new HashSet<ItemView>();
 
         public static void Apply(Harmony harmony)
         {
@@ -450,6 +455,9 @@ namespace PriceIndex
         {
             if (cell == null || cell.BottomPanel == null)
                 return;
+
+            if (cell is GridItemView)
+                Drawn.Add(cell);
 
             Item item = cell.Item;
             if (ShowsMoney(cell, item))
@@ -972,19 +980,40 @@ namespace PriceIndex
 
         public static void RedrawWaiting()
         {
-            var cells = Waiting.ToList();
+            foreach (ItemView cell in Waiting)
+                Line(cell);
             Waiting.Clear();
-            foreach (ItemView cell in cells)
+        }
+
+        public static void RedrawAll()
+        {
+            Drawn.RemoveWhere(cell => cell == null);
+            foreach (ItemView cell in Drawn)
             {
+                if (cell.isActiveAndEnabled)
+                    Line(cell);
+            }
+        }
+
+        public static void Update()
+        {
+            if (Due.Count == 0)
+                return;
+
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            while (Due.Count > 0 && watch.Elapsed.TotalMilliseconds < FrameBudget)
+            {
+                ItemView cell = Due.Dequeue();
+                InLine.Remove(cell);
                 if (cell != null && cell.Item != null)
                     CellPostfix(cell);
             }
         }
 
-        public static void RedrawAll()
+        private static void Line(ItemView cell)
         {
-            foreach (ItemView cell in UnityEngine.Object.FindObjectsOfType<GridItemView>())
-                CellPostfix(cell);
+            if (cell != null && InLine.Add(cell))
+                Due.Enqueue(cell);
         }
     }
 }
