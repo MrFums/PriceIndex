@@ -14,7 +14,7 @@
 
 ### Prices
 - Prices are ready before you open the stash. Your stash and gear are priced as soon as you reach the menu, and again after each raid, so colours and prices never pop in.
-- With Better Flea 2.5.1 or newer, the whole stash is priced in a handful of requests. Items that turn up later are asked for together.
+- With Better Flea 2.5.0 or newer, the whole stash is priced in a handful of requests. Items that turn up later are asked for together.
 - Without Better Flea, flea prices come from the price list the game already downloads, so they're instant and send no requests.
 - **Price on items** set to Most skips a flea price you can't get yet and shows the trader's price, unless no trader buys it.
 - New **Price tag size on items** slider.

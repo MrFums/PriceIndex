@@ -18,7 +18,7 @@ If you can't list an item on the flea yet (flea level, found in raid only, or Be
 ## Made for Better Flea
 Price Index is made to be used with [Better Flea](https://github.com/MrFums/BetterFlea), but works fine without it.
 
-- **With Better Flea 2.3.0 or newer** on the server, the flea price is Better Flea's own price for that exact item, with its price multiplier, marked key multiplier and Wipe Cycle applied. With **2.5.1 or newer**, your whole stash is priced in a handful of requests when you reach the menu.
+- **With Better Flea 2.3.0 or newer** on the server, the flea price is Better Flea's own price for that exact item, with its price multiplier, marked key multiplier and Wipe Cycle applied. With **2.5.0 or newer**, your whole stash is priced in a handful of requests when you reach the menu.
 - **Without it**, or with an older Better Flea, the flea price is worked out from the base game's flea prices, which the game already has, so it's instant.
 
 The flea row's tooltip says which one you're looking at.
