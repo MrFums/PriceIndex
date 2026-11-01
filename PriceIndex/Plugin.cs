@@ -160,7 +160,7 @@ namespace PriceIndex
                     new AcceptableValueRange<int>(10, 1800)));
 
             const string colours = "4. Colours";
-            ColourEnabled = Config.Bind(colours, "Colours", true,
+            ColourEnabled = Config.Bind(colours, "Colours", false,
                 Describe("Colour things by how much the item is worth, using the tiers below. Untick to turn all colours off.", 100));
             ColourSource = Config.Bind(colours, "Colours based on", ColourBy.Most,
                 Describe("Which price picks the tier. Most: whichever pays more, the flea or the best trader. "
@@ -213,6 +213,7 @@ namespace PriceIndex
             HighlightBanned = Config.Bind(colours, "Highlight flea-banned items", true,
                 Describe("Give items the flea has banned a background of their own colour, instead of a colour from the trader's price. "
                          + "Works even with Colours unticked. Only real bans count, not items locked by flea level or found in raid. "
+                         + "With Colour item names on, the name uses this colour too. "
                          + "Banned ammo keeps its tier colour while Colour banned ammo by flea price is on.", 69));
             BannedColour = Config.Bind(colours, "Flea-banned colour", (Color)new Color32(0xff, 0x00, 0x00, 0xff),
                 Describe("The background colour for items the flea has banned.", 68, drawer: ColourField.Draw));

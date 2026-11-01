@@ -381,7 +381,8 @@ namespace PriceIndex
                 return ComposeMoney();
 
             PriceInfo info = PriceInfo.For(_item, Redraw.OnPrice, true);
-            string head = Head(Tiers.NamesOnHover ? Tiers.ForName(info) : null);
+            Color32? nameTint = !Tiers.NamesOnHover ? null : Tiers.ShowsBanned(_item) ? Tiers.Banned : Tiers.ForName(info);
+            string head = Head(nameTint);
 
             Color32? tint = Tiers.ForText(info);
             string value = tint != null ? Tiers.Hexcode(tint.Value) : Value;
@@ -483,9 +484,14 @@ namespace PriceIndex
                 Waiting.Add(cell);
 
             Color32? back = backed ? Tiers.ForItem(info) : null;
+            Color32? name = named ? Tiers.ForName(info) : null;
             if (shows && Tiers.ShowsBanned(item))
+            {
                 back = Tiers.Banned;
-            TintCell(cell, named ? Tiers.ForName(info) : null, back);
+                if (named)
+                    name = Tiers.Banned;
+            }
+            TintCell(cell, name, back);
 
             Color32? tier = null;
             string text = tagged ? Text(info, out locked, out tier) : null;
