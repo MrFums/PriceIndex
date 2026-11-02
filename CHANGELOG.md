@@ -1,5 +1,9 @@
 ﻿# Changelog
 
+## 1.2.4
+
+- New **Colour categories** in F12: tick which kinds of item get colours (Weapons, Weapon parts, Ammo, Gear, Containers, Keys, Meds, Food, Barter, Info, Money, Other). All are ticked by default. Untick one, such as Keys or Ammo, and those items get no background, name colour, price colour or flea-banned highlight.
+
 ## 1.2.3
 
 - Without Better Flea, flea prices are the flea market's own averages again, asked for per item. They were coming from a trader price list that sits well below the flea (a Bundle of wires showed 7,400 instead of about 31,000). Each item's average is kept for 30 minutes, so the server isn't asked again and again.

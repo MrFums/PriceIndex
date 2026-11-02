@@ -44,6 +44,7 @@ Press **F12** in game > Fums-PriceIndex.
 Colour items by how much they're worth. Off by default: tick **Colours** to turn it on.
 
 - **Tiers**: 5 tiers, each with a minimum price and a colour. Click the colour for sliders, or type a hex code. The defaults run grey, green, blue, purple and gold, from 0 up to 250k. Tiers 6, 7 and 8 are there too, off until you tick them.
+- **Colour categories**: tick which kinds of item get colours. Untick Keys to keep another mod's key colours, such as Better Keys.
 - **Colour by price per slot** (off by default): the tier is picked from the price per slot the item takes up.
 - **Colours based on**: the flea price, the best trader's, or whichever pays more.
 - **Colour item backgrounds** (on by default), with a strength slider.

@@ -17,6 +17,25 @@ namespace PriceIndex
         public const int Always = 5;
 
         private static readonly List<Tier> Built = new List<Tier>();
+        private static readonly Dictionary<string, ColourCategory> Kinds = new Dictionary<string, ColourCategory>();
+
+        private static readonly (string Id, ColourCategory Kind)[] KindNodes =
+        {
+            ("5485a8684bdc2da71d8b4567", ColourCategory.Ammo),
+            ("543be5cb4bdc2deb348b4568", ColourCategory.Ammo),
+            ("543be5e94bdc2df1348b4568", ColourCategory.Keys),
+            ("5422acb9af1c889c16000029", ColourCategory.Weapons),
+            ("5447e1d04bdc2dff2f8b4567", ColourCategory.Weapons),
+            ("543be6564bdc2df4348b4568", ColourCategory.Weapons),
+            ("5448fe124bdc2da5018b4567", ColourCategory.WeaponParts),
+            ("543be5f84bdc2dd4348b456a", ColourCategory.Gear),
+            ("566168634bdc2d144c8b456c", ColourCategory.Gear),
+            ("5795f317245977243854e041", ColourCategory.Containers),
+            ("543be5664bdc2dd4348b4569", ColourCategory.Meds),
+            ("543be6674bdc2df1348b4569", ColourCategory.Food),
+            ("5448eb774bdc2d0a728b4567", ColourCategory.Barter),
+            ("5448ecbe4bdc2d60728b4568", ColourCategory.Info)
+        };
         private static bool _dirty = true;
 
         public static Color32 Blocked
@@ -37,9 +56,37 @@ namespace PriceIndex
             }
         }
 
+        public static ColourCategory KindOf(Item item)
+        {
+            if (item is Money)
+                return ColourCategory.Money;
+
+            string id = item.TemplateId.ToString();
+            if (Kinds.TryGetValue(id, out ColourCategory kind))
+                return kind;
+
+            kind = ColourCategory.Other;
+            foreach (var node in KindNodes)
+            {
+                if (item.Template.IsChildOf(node.Id))
+                {
+                    kind = node.Kind;
+                    break;
+                }
+            }
+
+            Kinds[id] = kind;
+            return kind;
+        }
+
+        public static bool Coloured(ColourCategory kind)
+        {
+            return (Plugin.ColourCategories.Value & kind) != 0;
+        }
+
         public static bool ShowsBanned(Item item)
         {
-            if (!Plugin.ColourEnabled.Value || !Plugin.HighlightBanned.Value || !Prices.IsFleaBanned(item))
+            if (!Plugin.ColourEnabled.Value || !Plugin.HighlightBanned.Value || !Coloured(KindOf(item)) || !Prices.IsFleaBanned(item))
                 return false;
             return !(item is Ammo && ItemBackgroundOn && Plugin.ColourBannedAmmo.Value);
         }
@@ -157,7 +204,7 @@ namespace PriceIndex
 
         private static Color32? For(PriceInfo info)
         {
-            if (!NamesOn && !PricesOn && !ItemBackgroundOn)
+            if (!NamesOn && !PricesOn && !ItemBackgroundOn || !Coloured(info.Kind))
                 return null;
 
             bool banned = info.FleaBanned && !(info.IsAmmo && Plugin.ColourBannedAmmo.Value && info.ColourFlea != null);
@@ -197,7 +244,7 @@ namespace PriceIndex
 
         public static Color32? ForMoney(double? roubles)
         {
-            return roubles == null || !Plugin.ColourEnabled.Value ? null : Lookup(roubles.Value);
+            return roubles == null || !Plugin.ColourEnabled.Value || !Coloured(ColourCategory.Money) ? null : Lookup(roubles.Value);
         }
 
         private static Color32? Lookup(double roubles)

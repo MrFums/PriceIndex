@@ -1115,6 +1115,7 @@ namespace PriceIndex
         public bool IsAmmo;
         public double? ColourTrader;
         public int Slots = 1;
+        public ColourCategory Kind = ColourCategory.Other;
 
         public static bool Shows(Item item, ShowIn where)
         {
@@ -1256,6 +1257,7 @@ namespace PriceIndex
             info.ColourFlea = info.FleaTotal;
             info.ColourTrader = info.TraderRoubles;
             info.IsAmmo = item is Ammo;
+            info.Kind = Tiers.KindOf(item);
             IntVec2 size = item.CalculateCellSize();
             info.Slots = Math.Max(1, size.X * size.Y);
             if (Plugin.ColourFullStacks.Value && item.StackMaxSize > 1)

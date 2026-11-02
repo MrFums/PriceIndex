@@ -59,6 +59,24 @@ namespace PriceIndex
         TagBackgroundAndText
     }
 
+    [Flags]
+    public enum ColourCategory
+    {
+        None = 0,
+        Weapons = 1,
+        WeaponParts = 2,
+        Ammo = 4,
+        Gear = 8,
+        Containers = 16,
+        Keys = 32,
+        Meds = 64,
+        Food = 128,
+        Barter = 256,
+        Info = 512,
+        Money = 1024,
+        Other = 2048
+    }
+
     public enum NameColour
     {
         Off,
@@ -73,7 +91,7 @@ namespace PriceIndex
     {
         public const string Guid = "com.fums.priceindex";
         public const string Name = "Fums-PriceIndex";
-        public const string Version = "1.2.3";
+        public const string Version = "1.2.4";
 
         internal static ManualLogSource Log;
 
@@ -101,6 +119,7 @@ namespace PriceIndex
         internal static ConfigEntry<bool> HighlightBanned;
         internal static ConfigEntry<Color> BannedColour;
         internal static ConfigEntry<bool> ColourPerSlot;
+        internal static ConfigEntry<ColourCategory> ColourCategories;
         internal static readonly ConfigEntry<int>[] TierMin = new ConfigEntry<int>[Tiers.Count];
         internal static readonly ConfigEntry<Color>[] TierColour = new ConfigEntry<Color>[Tiers.Count];
         internal static readonly ConfigEntry<bool>[] TierOn = new ConfigEntry<bool>[Tiers.Count];
@@ -198,25 +217,29 @@ namespace PriceIndex
                          + "The price on the item still shows what you can sell it for. Untick to colour banned ammo like other banned items.", 91));
             ColourPerSlot = Config.Bind(colours, "Colour by price per slot", false,
                 Describe("Pick the tier from what the item is worth per slot it takes up, so an item worth 20k that takes 2 slots "
-                         + "is coloured as 10k. The price on the item still shows the full price.", 90));
+                         + "is coloured as 10k. The price on the item still shows the full price.", 89));
+            ColourCategories = Config.Bind(colours, "Colour categories", (ColourCategory)4095,
+                Describe("Which kinds of item get colours. Untick a kind, such as Keys or Ammo, to leave it uncoloured: "
+                         + "no background, name colour, price colour or flea-banned highlight.", 90));
+            ColourCategories.SettingChanged += (_, __) => ColoursChanged();
             ColourPerSlot.SettingChanged += (_, __) => ColoursChanged();
             for (int i = 0; i < Tiers.Count; i++)
             {
                 if (i >= Tiers.Always)
                 {
                     TierOn[i] = Config.Bind(colours, $"Tier {i + 1}", false,
-                        Describe($"Use tier {i + 1}. Off by default: tick it for an extra tier above the others.", 89 - i * 3));
+                        Describe($"Use tier {i + 1}. Off by default: tick it for an extra tier above the others.", 88 - i * 3));
                     TierOn[i].SettingChanged += (_, __) => ColoursChanged();
                 }
 
                 TierColour[i] = Config.Bind(colours, $"Tier {i + 1} colour", TierColourDefaults[i],
                     Describe("The colour for this tier. Click the colour to open its sliders, or type a hex code such as #4da3ff.",
-                        88 - i * 3, drawer: ColourField.Draw));
+                        87 - i * 3, drawer: ColourField.Draw));
                 TierMin[i] = Config.Bind(colours, $"Tier {i + 1} from (roubles)", TierMinDefaults[i],
                     Describe(i == 0
                             ? "Items worth at least this many roubles get tier 1's colour. Keep it at 0 so every item gets a colour. A stack counts as a whole."
                             : $"Items worth at least this many roubles get tier {i + 1}'s colour instead of tier {i}'s. A stack counts as a whole.",
-                        87 - i * 3));
+                        86 - i * 3));
                 TierMin[i].SettingChanged += (_, __) => ColoursChanged();
                 TierColour[i].SettingChanged += (_, __) => ColoursChanged();
             }
