@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Comfort.Common;
 using EFT;
@@ -38,6 +40,12 @@ namespace PriceIndex
         private const string FleaRoute = "/betterflea/item-price";
         private const string BatchRoute = "/betterflea/item-prices";
         private const string ClientDataRoute = "/betterflea/client-data";
+        private const string MarketRoute = "/client/ragfair/itemMarketPrice";
+        private const string MarketKey = "market:";
+        private const float MarketKeepSeconds = 1800f;
+        private const int MarketTimeout = 30000;
+        private const float SaveEvery = 10f;
+        private const string CacheName = "PriceIndex-flea.json";
         private const int MostCached = 4000;
         private const int MostPerBatch = 250;
         private const double PreloadBudget = 2d;
@@ -85,8 +93,11 @@ namespace PriceIndex
             public Action Done;
             public LinkedListNode<string> Used;
             public Priority Tier;
+            public bool Market;
 
-            public bool Stale => !Pending && Time.realtimeSinceStartup - FetchedAt > Plugin.RefreshSeconds.Value;
+            private float Keep => Market ? Math.Max(MarketKeepSeconds, Plugin.RefreshSeconds.Value) : Plugin.RefreshSeconds.Value;
+
+            public bool Stale => !Pending && Time.realtimeSinceStartup - FetchedAt > Keep;
 
             public FleaState Read(Action onReady, out double price)
             {
@@ -108,12 +119,12 @@ namespace PriceIndex
                 FetchedAt = Time.realtimeSinceStartup;
                 if (failed)
                 {
-                    FetchedAt -= Math.Max(0, Plugin.RefreshSeconds.Value - Redraw.RetrySeconds);
+                    FetchedAt -= Math.Max(0, Keep - Redraw.RetrySeconds);
                     Redraw.SweepIn(Redraw.RetrySeconds);
                 }
                 else
                 {
-                    Redraw.SweepIn(Plugin.RefreshSeconds.Value);
+                    Redraw.SweepIn(Keep);
                 }
 
                 var done = Done;
@@ -140,6 +151,9 @@ namespace PriceIndex
         private static int _preloadNext;
         private static bool _preloaded;
         private static bool _wasInRaid;
+        private static bool _cacheLoaded;
+        private static bool _cacheDirty;
+        private static float _saveAt;
 
         private static void Invoke(Action action)
         {
@@ -196,30 +210,23 @@ namespace PriceIndex
                     return FleaState.Loading;
                 case BetterFlea.Yes:
                     FleaState state = TryGetBetterFlea(item, out price, onReady, tier);
-                    if (state == FleaState.Loading)
-                    {
-                        FleaState guess = TryGetAverage(item, out double estimate, onReady);
-                        if (guess != FleaState.Ready)
-                            return FleaState.Loading;
-                        price = estimate;
-                        return FleaState.Refreshing;
-                    }
-
                     exact = state != FleaState.Unavailable;
                     if (exact)
                         return state;
                     break;
             }
 
-            return TryGetAverage(item, out price, onReady);
+            return TryGetAverage(item, out price, onReady, tier);
         }
 
         public static void Update()
         {
             if (_betterFlea == BetterFlea.Unknown)
                 CheckBetterFlea(null);
+            LoadCache();
             Preload();
             SendQueued();
+            SaveCache();
         }
 
         public static bool InRaid => Singleton<GameWorld>.Instantiated && !(Singleton<GameWorld>.Instance is HideoutGameWorld);
@@ -235,12 +242,13 @@ namespace PriceIndex
                 PreloadItems.Clear();
             }
 
-            if (inRaid || _betterFlea != BetterFlea.Yes || FleaOff)
+            if (inRaid || FleaOff || _betterFlea == BetterFlea.Unknown || _betterFlea == BetterFlea.Checking)
                 return;
 
             if (!_preloaded)
             {
-                FetchBans();
+                if (_betterFlea == BetterFlea.Yes)
+                    FetchBans();
                 var inventory = Session?.Profile?.Inventory;
                 if (inventory == null)
                     return;
@@ -261,15 +269,16 @@ namespace PriceIndex
                 }
             }
 
+            bool warm = _betterFlea == BetterFlea.Yes;
             var watch = System.Diagnostics.Stopwatch.StartNew();
             while (_preloadNext < PreloadItems.Count && watch.Elapsed.TotalMilliseconds < PreloadBudget)
             {
                 Item item = PreloadItems[_preloadNext++];
                 if (item is Money || item.QuestItem)
                     continue;
-                TryGetFlea(item, out _, out _, null, false, true);
+                TryGetFlea(item, out _, out _, null, false, warm);
                 if (item is Magazine mag && mag.FirstRealAmmo() is Item round)
-                    TryGetFlea(round, out _, out _, null, false, true);
+                    TryGetFlea(round, out _, out _, null, false, warm);
             }
         }
 
@@ -398,12 +407,12 @@ namespace PriceIndex
             bool failed = false;
             try
             {
-                Store(job.Entry, await Post(job.Key));
+                Store(job.Entry, job.Entry.Market ? await MarketAverage(job.Key.Substring(MarketKey.Length)) : await Post(job.Key));
             }
             catch (Exception e)
             {
                 failed = true;
-                Plugin.Log.LogWarning($"Could not get a Better Flea price: {e.Message}");
+                Plugin.Log.LogWarning(job.Entry.Market ? $"Could not get a flea price: {e.Message}" : $"Could not get a Better Flea price: {e.Message}");
             }
 
             Ended(warm, failed);
@@ -446,6 +455,61 @@ namespace PriceIndex
                 Redraw.Changed();
             entry.Price = price;
             entry.Known = known;
+            if (entry.Market)
+                _cacheDirty = true;
+        }
+
+        private static string CachePath => Path.Combine(BepInEx.Paths.CachePath, CacheName);
+
+        private static void LoadCache()
+        {
+            if (_cacheLoaded)
+                return;
+            _cacheLoaded = true;
+            try
+            {
+                if (!File.Exists(CachePath))
+                    return;
+                var saved = JsonConvert.DeserializeObject<Dictionary<string, double>>(File.ReadAllText(CachePath));
+                if (saved == null)
+                    return;
+                foreach (var pair in saved)
+                {
+                    if (pair.Value <= 0)
+                        continue;
+                    Entry entry = Cached(MarketKey + pair.Key, true);
+                    entry.Price = pair.Value;
+                    entry.Known = true;
+                }
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogWarning($"Could not read the saved flea prices: {e.Message}");
+            }
+        }
+
+        private static void SaveCache()
+        {
+            float now = Time.realtimeSinceStartup;
+            if (!_cacheDirty || now < _saveAt)
+                return;
+            _cacheDirty = false;
+            _saveAt = now + SaveEvery;
+            try
+            {
+                var saved = new Dictionary<string, double>();
+                foreach (var pair in Flea)
+                {
+                    if (pair.Value.Market && pair.Value.Known)
+                        saved[pair.Key.Substring(MarketKey.Length)] = pair.Value.Price;
+                }
+                Directory.CreateDirectory(BepInEx.Paths.CachePath);
+                File.WriteAllText(CachePath, JsonConvert.SerializeObject(saved));
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogWarning($"Could not save the flea prices: {e.Message}");
+            }
         }
 
         private static void Failed()
@@ -521,6 +585,30 @@ namespace PriceIndex
             return answer.Price;
         }
 
+        private static async Task<double> MarketAverage(string tpl)
+        {
+            Client client = RequestHandler.HttpClient;
+            byte[] body = Zlib.Compress(Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(new { templateId = tpl })), ZlibCompression.Maximum);
+            using (var timeout = new CancellationTokenSource(MarketTimeout))
+            using (HttpRequestMessage request = client.CreateNewHttpRequest(HttpMethod.Post, MarketRoute))
+            {
+                request.Content = new ByteArrayContent(body);
+                using (HttpResponseMessage response = await client.HttpClient.SendAsync(request, timeout.Token))
+                {
+                    if (!response.IsSuccessStatusCode)
+                        throw new Exception("the server answered " + (int)response.StatusCode);
+
+                    byte[] data = await response.Content.ReadAsByteArrayAsync();
+                    if (Zlib.IsCompressed(data))
+                        data = Zlib.Decompress(data);
+                    var answer = JsonConvert.DeserializeObject<MarketAnswer>(Encoding.UTF8.GetString(data));
+                    if (answer == null || answer.Err != 0 || answer.Data == null)
+                        throw new Exception("the server sent no price back");
+                    return answer.Data.Avg ?? 0;
+                }
+            }
+        }
+
         private static async Task<List<double>> PostBatch(IEnumerable<string> bodies)
         {
             var answer = JsonConvert.DeserializeObject<BatchAnswer>(await PostText(BatchRoute, "[" + string.Join(",", bodies) + "]"));
@@ -594,15 +682,23 @@ namespace PriceIndex
         private static FleaState TryGetBetterFlea(Item item, out double price, Action onReady, Priority tier)
         {
             string body = Serialize(item);
-            if (!Flea.TryGetValue(body, out var entry))
+            Entry entry = Cached(body, false);
+            if (entry.Stale || entry.Waiting)
+                Ask(body, entry, tier);
+            return entry.Read(onReady, out price);
+        }
+
+        private static Entry Cached(string key, bool market)
+        {
+            if (!Flea.TryGetValue(key, out var entry))
             {
                 while (Flea.Count >= MostCached && FleaOrder.First != null)
                 {
                     Flea.Remove(FleaOrder.First.Value);
                     FleaOrder.RemoveFirst();
                 }
-                Flea[body] = entry = new Entry();
-                entry.Used = FleaOrder.AddLast(body);
+                Flea[key] = entry = new Entry { Market = market };
+                entry.Used = FleaOrder.AddLast(key);
             }
             else
             {
@@ -610,59 +706,29 @@ namespace PriceIndex
                 FleaOrder.AddLast(entry.Used);
             }
 
+            return entry;
+        }
+
+        private static FleaState TryGetMarket(string tpl, out double price, Action onReady, Priority tier)
+        {
+            string key = MarketKey + tpl;
+            Entry entry = Cached(key, true);
             if (entry.Stale || entry.Waiting)
-                Ask(body, entry, tier);
+                Ask(key, entry, tier);
             return entry.Read(onReady, out price);
         }
 
-        private static FleaState TryGetAverage(Item item, out double price, Action onReady)
+        private static FleaState TryGetAverage(Item item, out double price, Action onReady, Priority tier)
         {
+            FleaState state = TryGetMarket(item.TemplateId.ToString(), out double average, onReady, tier);
             price = 0;
-            Dictionary<string, double> table = Table(onReady, out bool loading);
-            if (table == null)
-                return loading ? FleaState.Loading : FleaState.Unavailable;
+            if (state == FleaState.Loading)
+                return state;
+            if (average <= 0)
+                return FleaState.Unavailable;
 
-            IEnumerable<Item> parts = item is Weapon
-                ? item.GetAllItems().Where(part => part == item || Attached(part, item))
-                : new[] { item };
-            foreach (Item part in parts)
-            {
-                if (!table.TryGetValue(part.TemplateId.ToString(), out double average) || average <= 0)
-                {
-                    if (part == item)
-                        return FleaState.Unavailable;
-                    continue;
-                }
-
-                int rounds = part != item && part.CurrentAddress is StackSlotItemAddress ? Math.Max(1, part.StackObjectsCount) : 1;
-                price += average * rounds;
-            }
-
-            price *= Quality(item);
-            return price > 0 ? FleaState.Ready : FleaState.Unavailable;
-        }
-
-        private static Dictionary<string, double> Table(Action onReady, out bool loading)
-        {
-            loading = false;
-            var session = Session;
-            if (session?.Traders == null)
-                return null;
-
-            Trader first = null;
-            foreach (Trader trader in session.Traders)
-            {
-                if (trader?._supplyData?.MarketPrices != null)
-                    return trader._supplyData.MarketPrices;
-                if (first == null && trader?.Info != null && trader.Info.Available)
-                    first = trader;
-            }
-
-            if (first == null)
-                return null;
-            loading = true;
-            LoadSupplyData(session, first, onReady);
-            return null;
+            price = average * Quality(item);
+            return price > 0 ? state : FleaState.Unavailable;
         }
 
         private static double Quality(Item item)
@@ -718,6 +784,21 @@ namespace PriceIndex
         private class BanAnswer
         {
             public List<string> FleaBanned { get; set; }
+        }
+
+        private class MarketAnswer
+        {
+            [JsonProperty("err")]
+            public int Err { get; set; }
+
+            [JsonProperty("data")]
+            public MarketPrices Data { get; set; }
+        }
+
+        private class MarketPrices
+        {
+            [JsonProperty("avg")]
+            public double? Avg { get; set; }
         }
 
         private static string Serialize(Item root)

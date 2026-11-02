@@ -1,4 +1,11 @@
-# Changelog
+﻿# Changelog
+
+## 1.2.3
+
+- Without Better Flea, flea prices are the flea market's own averages again, asked for per item. They were coming from a trader price list that sits well below the flea (a Bundle of wires showed 7,400 instead of about 31,000). Each item's average is kept for 30 minutes, so the server isn't asked again and again.
+- Without Better Flea, a gun is priced the way the server prices it when you list it: the flea average for that gun, by its condition. Its attachments are no longer added on top, which counted them twice (an SVD showed about 820k instead of about 410k).
+- That trader price list is no longer used anywhere. With Better Flea, a price shows once Better Flea answers, with no early guess. If Better Flea has no price for an item, the flea market's own average is used instead.
+- Without Better Flea, your stash and gear are priced as soon as you reach the menu, and flea averages are saved to `BepInEx\cache`, so the next time you play they show straight away while fresh ones load.
 
 ## 1.2.2
 
