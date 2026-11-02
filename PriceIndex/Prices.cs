@@ -799,7 +799,7 @@ namespace PriceIndex
             if (player?.GetBan(EBanType.RagFair) != null)
                 return "You're banned from the Flea Market for now.";
 
-            if (!item.CanSellOnRagfair)
+            if (!item.Template.CanSellOnRagfair)
             {
                 string reason = null;
                 try
@@ -1033,6 +1033,7 @@ namespace PriceIndex
         public double? ColourFlea;
         public bool IsAmmo;
         public double? ColourTrader;
+        public int Slots = 1;
 
         public static bool Shows(Item item, ShowIn where)
         {
@@ -1095,6 +1096,8 @@ namespace PriceIndex
                         info.FleaKeep = total - (fee ?? 0) * count / stack;
                         if (hasContents)
                             fleaTip.Append("\nEmpty it before listing it.");
+                        else if (!item.CanSellOnRagfair)
+                            fleaTip.Append("\nTake the banned parts off before listing it.");
                     }
                     break;
                 case FleaState.Loading:
@@ -1172,6 +1175,8 @@ namespace PriceIndex
             info.ColourFlea = info.FleaTotal;
             info.ColourTrader = info.TraderRoubles;
             info.IsAmmo = item is Ammo;
+            IntVec2 size = item.CalculateCellSize();
+            info.Slots = Math.Max(1, size.X * size.Y);
             if (Plugin.ColourFullStacks.Value && item.StackMaxSize > 1)
             {
                 double scale = (item is Ammo ? AmmoRounds : item.StackMaxSize) / (double)count;

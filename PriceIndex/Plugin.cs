@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
@@ -73,7 +73,7 @@ namespace PriceIndex
     {
         public const string Guid = "com.fums.priceindex";
         public const string Name = "Fums-PriceIndex";
-        public const string Version = "1.2.1";
+        public const string Version = "1.2.2";
 
         internal static ManualLogSource Log;
 
@@ -100,17 +100,22 @@ namespace PriceIndex
         internal static ConfigEntry<bool> ColourBannedAmmo;
         internal static ConfigEntry<bool> HighlightBanned;
         internal static ConfigEntry<Color> BannedColour;
+        internal static ConfigEntry<bool> ColourPerSlot;
         internal static readonly ConfigEntry<int>[] TierMin = new ConfigEntry<int>[Tiers.Count];
         internal static readonly ConfigEntry<Color>[] TierColour = new ConfigEntry<Color>[Tiers.Count];
+        internal static readonly ConfigEntry<bool>[] TierOn = new ConfigEntry<bool>[Tiers.Count];
 
-        private static readonly int[] TierMinDefaults = { 0, 20000, 50000, 100000, 250000 };
+        private static readonly int[] TierMinDefaults = { 0, 20000, 50000, 100000, 250000, 500000, 1000000, 2000000 };
         private static readonly Color[] TierColourDefaults =
         {
             new Color32(0xb4, 0xba, 0xbd, 0xff),
             new Color32(0x6f, 0xbf, 0x73, 0xff),
             new Color32(0x4d, 0xa3, 0xff, 0xff),
             new Color32(0xb0, 0x7c, 0xff, 0xff),
-            new Color32(0xff, 0xc2, 0x33, 0xff)
+            new Color32(0xff, 0xc2, 0x33, 0xff),
+            new Color32(0xff, 0x8a, 0x3d, 0xff),
+            new Color32(0xff, 0x4f, 0x81, 0xff),
+            new Color32(0x3d, 0xe0, 0xff, 0xff)
         };
 
         private const string WhereText = "Stash: out of raid (stash, traders, hideout). Raid: in a raid. "
@@ -191,32 +196,43 @@ namespace PriceIndex
             ColourBannedAmmo = Config.Bind(colours, "Colour banned ammo by flea price", true,
                 Describe("Colour ammo by its flea price even when the flea has banned or locked it, so the colour shows how good the ammo is. "
                          + "The price on the item still shows what you can sell it for. Untick to colour banned ammo like other banned items.", 91));
+            ColourPerSlot = Config.Bind(colours, "Colour by price per slot", false,
+                Describe("Pick the tier from what the item is worth per slot it takes up, so an item worth 20k that takes 2 slots "
+                         + "is coloured as 10k. The price on the item still shows the full price.", 90));
+            ColourPerSlot.SettingChanged += (_, __) => ColoursChanged();
             for (int i = 0; i < Tiers.Count; i++)
             {
+                if (i >= Tiers.Always)
+                {
+                    TierOn[i] = Config.Bind(colours, $"Tier {i + 1}", false,
+                        Describe($"Use tier {i + 1}. Off by default: tick it for an extra tier above the others.", 89 - i * 3));
+                    TierOn[i].SettingChanged += (_, __) => ColoursChanged();
+                }
+
                 TierColour[i] = Config.Bind(colours, $"Tier {i + 1} colour", TierColourDefaults[i],
                     Describe("The colour for this tier. Click the colour to open its sliders, or type a hex code such as #4da3ff.",
-                        90 - i * 2, drawer: ColourField.Draw));
+                        88 - i * 3, drawer: ColourField.Draw));
                 TierMin[i] = Config.Bind(colours, $"Tier {i + 1} from (roubles)", TierMinDefaults[i],
                     Describe(i == 0
                             ? "Items worth at least this many roubles get tier 1's colour. Keep it at 0 so every item gets a colour. A stack counts as a whole."
                             : $"Items worth at least this many roubles get tier {i + 1}'s colour instead of tier {i}'s. A stack counts as a whole.",
-                        89 - i * 2));
+                        87 - i * 3));
                 TierMin[i].SettingChanged += (_, __) => ColoursChanged();
                 TierColour[i].SettingChanged += (_, __) => ColoursChanged();
             }
 
             ColourBlocked = Config.Bind(colours, "Unsellable colour", (Color)new Color32(0xb4, 0x87, 0x87, 0xff),
                 Describe("The colour for an item that can't be sold. With Flea: the flea has banned it. With Trader: no trader buys it. "
-                         + "With Most: the flea has banned it and no trader buys it either.", 70, drawer: ColourField.Draw));
+                         + "With Most: the flea has banned it and no trader buys it either.", 60, drawer: ColourField.Draw));
             ColourBlocked.SettingChanged += (_, __) => ColoursChanged();
 
             HighlightBanned = Config.Bind(colours, "Highlight flea-banned items", true,
                 Describe("Give items the flea has banned a background of their own colour, instead of a colour from the trader's price. "
                          + "Needs Colours ticked. Only real bans count, not items locked by flea level or found in raid. "
                          + "With Colour item names on, the name uses this colour too. "
-                         + "Banned ammo keeps its tier colour while Colour banned ammo by flea price is on.", 69));
+                         + "Banned ammo keeps its tier colour while Colour banned ammo by flea price is on.", 59));
             BannedColour = Config.Bind(colours, "Flea-banned colour", (Color)new Color32(0xff, 0x00, 0x00, 0xff),
-                Describe("The background colour for items the flea has banned.", 68, drawer: ColourField.Draw));
+                Describe("The background colour for items the flea has banned.", 58, drawer: ColourField.Draw));
             HighlightBanned.SettingChanged += (_, __) => ColoursChanged();
             BannedColour.SettingChanged += (_, __) => ColoursChanged();
 

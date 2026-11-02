@@ -13,7 +13,8 @@ namespace PriceIndex
             public Color32 Colour;
         }
 
-        public const int Count = 5;
+        public const int Count = 8;
+        public const int Always = 5;
 
         private static readonly List<Tier> Built = new List<Tier>();
         private static bool _dirty = true;
@@ -189,7 +190,9 @@ namespace PriceIndex
                     break;
             }
 
-            return roubles == null ? null : Lookup(roubles.Value);
+            if (roubles == null)
+                return null;
+            return Lookup(Plugin.ColourPerSlot.Value ? roubles.Value / info.Slots : roubles.Value);
         }
 
         public static Color32? ForMoney(double? roubles)
@@ -219,6 +222,8 @@ namespace PriceIndex
             Built.Clear();
             for (int i = 0; i < Count; i++)
             {
+                if (i >= Always && !Plugin.TierOn[i].Value)
+                    continue;
                 Color picked = Plugin.TierColour[i].Value;
                 Built.Add(new Tier { Min = Math.Max(0, Plugin.TierMin[i].Value), Colour = new Color32((byte)Mathf.RoundToInt(picked.r * 255f), (byte)Mathf.RoundToInt(picked.g * 255f), (byte)Mathf.RoundToInt(picked.b * 255f), 0xff) });
             }

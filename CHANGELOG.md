@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.2
+
+- A gun with banned ammo loaded, or armour with a banned plate, keeps its flea price and colour instead of falling back to the trader's price. The flea tooltip says to take the banned parts off before listing it.
+- New **Colour by price per slot** (off by default): the tier is picked from what the item is worth per slot it takes up, so an item worth 20k that takes 2 slots is coloured as 10k. The price on the item still shows the full price.
+- New **Tier 6**, **Tier 7** and **Tier 8**, off by default. Tick one for an extra tier above the others. The defaults are orange from 500k, pink from 1M and cyan from 2M.
+
 ## 1.2.1
 
 - New **Highlight flea-banned items** (on by default) and **Flea-banned colour** (red): items the flea has banned get a background of their own colour, instead of a colour from the trader's price. It comes on with Colours, and can be turned off on its own. Only real bans count, not items locked by flea level or found in raid. With Better Flea, its ban list is used; without it, the game's own bans.
