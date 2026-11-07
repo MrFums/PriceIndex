@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using Comfort.Common;
+using EFT;
 using EFT.InventoryLogic;
 using UnityEngine;
 
@@ -19,11 +21,13 @@ namespace PriceIndex
         private static readonly List<Tier> Built = new List<Tier>();
         private static readonly Dictionary<string, ColourCategory> Kinds = new Dictionary<string, ColourCategory>();
 
+        private const string KeyNode = "543be5e94bdc2df1348b4568";
+
         private static readonly (string Id, ColourCategory Kind)[] KindNodes =
         {
             ("5485a8684bdc2da71d8b4567", ColourCategory.Ammo),
             ("543be5cb4bdc2deb348b4568", ColourCategory.Ammo),
-            ("543be5e94bdc2df1348b4568", ColourCategory.Keys),
+            (KeyNode, ColourCategory.Keys),
             ("5422acb9af1c889c16000029", ColourCategory.Weapons),
             ("5447e1d04bdc2dff2f8b4567", ColourCategory.Weapons),
             ("543be6564bdc2df4348b4568", ColourCategory.Weapons),
@@ -75,8 +79,41 @@ namespace PriceIndex
                 }
             }
 
+            if (kind == ColourCategory.WeaponParts && HoldsOnlyKeys(item.Template))
+                kind = ColourCategory.Keys;
+
             Kinds[id] = kind;
             return kind;
+        }
+
+        private static bool HoldsOnlyKeys(ItemTemplate template)
+        {
+            if (!(template is CompoundItemTemplate compound) || compound.Slots == null || compound.Slots.Length == 0)
+                return false;
+
+            var templates = Singleton<ItemFactory>.Instance?.ItemTemplates;
+            if (templates == null)
+                return false;
+
+            foreach (var slot in compound.Slots)
+            {
+                if (slot?.Filters == null || slot.Filters.Length == 0)
+                    return false;
+
+                foreach (var filter in slot.Filters)
+                {
+                    if (filter?.Filter == null || filter.Filter.Length == 0)
+                        return false;
+
+                    foreach (var allowed in filter.Filter)
+                    {
+                        if (!templates.TryGetValue(allowed, out ItemTemplate allowedTemplate) || !allowedTemplate.IsChildOf(KeyNode))
+                            return false;
+                    }
+                }
+            }
+
+            return true;
         }
 
         public static bool Coloured(ColourCategory kind)

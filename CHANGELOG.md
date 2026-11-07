@@ -4,6 +4,7 @@
 
 - New **Colour categories** in F12: tick which kinds of item get colours (Weapons, Weapon parts, Ammo, Gear, Containers, Keys, Meds, Food, Barter, Info, Money, Other). All are ticked by default. Untick one, such as Keys or Ammo, and those items get no background, name colour, price colour or flea-banned highlight.
 - Stacks in containers, such as ammo in a loot crate or a body, are priced for the whole stack again instead of one item. Only a trader's stock and flea offers show the price of one item.
+- Keychains from Gilded Key Storage count as Keys instead of Weapon parts, so unticking Keys in **Colour categories** leaves keys and keychains uncoloured, for anyone using colour-coded keys from another mod. Any weapon part whose slots only take keys counts as a key.
 
 ## 1.2.3
 
