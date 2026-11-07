@@ -1300,7 +1300,8 @@ namespace PriceIndex
 
         private static bool ShopStock(Item item)
         {
-            return !(item.Owner is InventoryController) || item.StackObjectsCount > item.StackMaxSize;
+            EOwnerType? owner = item.Owner?.OwnerType;
+            return owner == EOwnerType.Trader || owner == EOwnerType.RagFair || item.StackObjectsCount > item.StackMaxSize;
         }
 
         private static string Amount(double each, double total, int count, MongoID? currency)
