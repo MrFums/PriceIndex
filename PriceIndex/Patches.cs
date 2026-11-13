@@ -573,17 +573,31 @@ namespace PriceIndex
                 if (name == null && back == null)
                     return;
                 holder = cell.gameObject.AddComponent<CellTint>();
+                holder.View = cell;
                 holder.Caption = (cell as GridItemView)?.Caption;
                 holder.Panel = cell.ColorPanel;
             }
 
             holder.Name = name;
             holder.Back = back;
-            holder.Apply(true);
+            holder.Apply();
         }
 
         private class CellTint : MonoBehaviour
         {
+            private static readonly AccessTools.FieldRef<ItemView, Color> BackgroundColour =
+                AccessTools.FieldRefAccess<ItemView, Color>("BackgroundColor");
+
+            private static readonly AccessTools.FieldRef<ItemView, Color> OriginalBackgroundColour =
+                AccessTools.FieldRefAccess<ItemView, Color>("OriginalBackgroundColor");
+
+            private static readonly AccessTools.FieldRef<ItemView, bool> Highlighted =
+                AccessTools.FieldRefAccess<ItemView, bool>("Highlighted");
+
+            private static readonly AccessTools.FieldRef<ItemView, bool> HighlightedGlobally =
+                AccessTools.FieldRefAccess<ItemView, bool>("HighlightedGlobally");
+
+            public ItemView View;
             public TextMeshProUGUI Caption;
             public Image Panel;
             public Color32? Name;
@@ -597,7 +611,7 @@ namespace PriceIndex
 
             private void LateUpdate()
             {
-                Apply(false);
+                Apply();
             }
 
             private static string Bare(string text)
@@ -611,7 +625,7 @@ namespace PriceIndex
                 return text;
             }
 
-            public void Apply(bool capture)
+            public void Apply()
             {
                 if (Caption != null)
                 {
@@ -629,25 +643,40 @@ namespace PriceIndex
                     }
                 }
 
-                if (Panel != null)
+                if (View == null)
+                    View = GetComponent<ItemView>();
+                if (View == null)
+                    return;
+
+                // Drive ItemView.BackgroundColor and let UpdateColor() pick SelectedColor when the
+                // game is hovering or showing accept/merge highlights. Writing ColorPanel directly
+                // every frame was wiping those highlights.
+                if (Back != null)
                 {
-                    Color current = Panel.color;
-                    if (Back != null)
+                    if (!backApplied)
+                        backOriginal = OriginalBackgroundColour(View);
+
+                    Color desired = Tiers.Panel(Back.Value);
+                    desired.a = Mathf.Max(backOriginal.a, 0.85f);
+                    backApplied = true;
+                    backSet = desired;
+
+                    if (BackgroundColour(View) != desired)
                     {
-                        if (capture && (!backApplied || current != backSet))
-                            backOriginal = current;
-                        backApplied = true;
-                        backSet = Tiers.Panel(Back.Value);
-                        backSet.a = Mathf.Max(backOriginal.a, 0.85f);
-                        if (current != backSet)
-                            Panel.color = backSet;
+                        BackgroundColour(View) = desired;
+                        View.UpdateColor();
                     }
-                    else if (backApplied)
+                    else if (!Highlighted(View) && !HighlightedGlobally(View)
+                             && Panel != null && Panel.color != desired)
                     {
-                        backApplied = false;
-                        if (current == backSet)
-                            Panel.color = backOriginal;
+                        View.UpdateColor();
                     }
+                }
+                else if (backApplied)
+                {
+                    backApplied = false;
+                    BackgroundColour(View) = backOriginal;
+                    View.UpdateColor();
                 }
             }
         }
