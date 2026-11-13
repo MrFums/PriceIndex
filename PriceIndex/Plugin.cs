@@ -91,7 +91,7 @@ namespace PriceIndex
     {
         public const string Guid = "com.fums.priceindex";
         public const string Name = "Fums-PriceIndex";
-        public const string Version = "1.2.4";
+        public const string Version = "1.2.5";
 
         internal static ManualLogSource Log;
 

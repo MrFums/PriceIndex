@@ -5,13 +5,13 @@
     <AssemblyName>PriceIndex</AssemblyName>
     <RootNamespace>PriceIndex</RootNamespace>
     <LangVersion>latest</LangVersion>
-    <Version>1.2.4</Version>
+    <Version>1.2.5</Version>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <DebugType>none</DebugType>
     <PathMap>$(MSBuildProjectDirectory)=/_/</PathMap>
 
-    <SPTPath Condition="'$(SPTPath)' == ''">E:\Games\SPT4.1-CLEAN</SPTPath>
+    <SPTPath Condition="'$(SPTPath)' == ''">D:\SPT</SPTPath>
     <Managed>$(SPTPath)\EscapeFromTarkov_Data\Managed</Managed>
     <BepInExCore>$(SPTPath)\BepInEx\core</BepInExCore>
     <SptPlugins>$(SPTPath)\BepInEx\plugins\spt</SptPlugins>

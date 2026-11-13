@@ -1,5 +1,9 @@
 ﻿# Changelog
 
+## 1.2.5
+
+- Item background colouring no longer blocks the game's hover highlight or the soft yellow accept/merge highlight when dragging an item onto a container. Colours now go through the item view's own background colour instead of overwriting the panel every frame.
+
 ## 1.2.4
 
 - New **Colour categories** in F12: tick which kinds of item get colours (Weapons, Weapon parts, Ammo, Gear, Containers, Keys, Meds, Food, Barter, Info, Money, Other). All are ticked by default. Untick one, such as Keys or Ammo, and those items get no background, name colour, price colour or flea-banned highlight.
