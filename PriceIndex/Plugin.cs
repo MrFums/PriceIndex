@@ -129,6 +129,7 @@ namespace PriceIndex
         internal static ConfigEntry<bool> IncludeFence;
         internal static ConfigEntry<bool> ShowFlea;
         internal static ConfigEntry<PrimaryCurrency> ValueCurrency;
+        internal static ConfigEntry<int> RublesPerPrimary;
         internal static ConfigEntry<bool> PerSlot;
         internal static ConfigEntry<ShowIn> ColoursIn;
         internal static ConfigEntry<int> RefreshSeconds;
@@ -227,12 +228,25 @@ namespace PriceIndex
                 + "The flea is also hidden when the server has the flea market turned off.");
             ValueCurrency = Config.Bind("2. General", "Primary currency", PrimaryCurrency.RUB,
                 "Currency used for flea prices, comparisons, colour tiers, money worth and price tags. "
-                + "Flea and trader offers are converted with the traders' exchange rates. "
-                + "Use USD, EUR or GP when a server (such as Anarchy Flea's Currency Economy) has disabled roubles "
-                + "or prices primarily in another currency. Colour tier thresholds are amounts in this currency.");
+                + "Better Flea / the game still price in roubles internally; this only converts the number you see. "
+                + "Use USD, EUR or GP when a server (such as Anarchy Flea's Currency Economy) has disabled rouble offers. "
+                + "Colour tier thresholds are amounts in this currency.");
             ValueCurrency.SettingChanged += (_, __) =>
             {
+                Prices.ResetCourse();
                 Tiers.Invalidate();
+                RedrawItems();
+            };
+            RublesPerPrimary = Config.Bind("3. Advanced", "Rubles per primary currency", 0,
+                new ConfigDescription(
+                    "Exchange rate used when Primary currency is not RUB: how many roubles equal 1 USD, EUR or GP. "
+                    + "0 = automatic (trader courses, then the handbook price of that currency, then a built-in fallback). "
+                    + "Set this yourself if Anarchy Flea (or similar) has disabled roubles and tags look wrong — "
+                    + "around 140 for USD, 160 for EUR, 38000 for GP.",
+                    new AcceptableValueRange<int>(0, 200000)));
+            RublesPerPrimary.SettingChanged += (_, __) =>
+            {
+                Prices.ResetCourse();
                 RedrawItems();
             };
             RefreshSeconds = Config.Bind("3. Advanced", "Flea price refresh (seconds)", 120,
@@ -351,7 +365,8 @@ namespace PriceIndex
             Stacks.SettingChanged += (_, __) => RedrawItems();
             IconPosition.SettingChanged += (_, __) => RedrawItems();
             IconIn.SettingChanged += (_, __) => RedrawItems();
-            Logger.LogInfo($"{Name} {Version} loaded.");
+            Logger.LogInfo($"{Name} {Version} loaded. Primary currency={ValueCurrency.Value}. "
+                           + "Item values from Better Flea (roubles) / traders; display converts with the primary course.");
         }
 
         private static ConfigDescription Describe(string text, int order, AcceptableValueBase range = null, Action<ConfigEntryBase> drawer = null)

@@ -488,7 +488,8 @@ namespace PriceIndex
             bool named = shows && Tiers.NamesOnItems;
             bool backed = shows && Tiers.ItemBackgroundOn;
             PriceInfo info = tagged || named || backed ? PriceInfo.For(item, Redraw.OnPrice, false, NeedsFlea(tagged, named, backed)) : null;
-            if (info != null && (info.Loading || info.Refreshing))
+            if (info != null && (info.Loading || info.Refreshing
+                                 || !Prices.PrimaryIsRoubles && Prices.Course(Prices.PrimaryId) == null))
                 Waiting.Add(cell);
 
             Color32? back = backed ? Tiers.ForItem(info) : null;
@@ -675,14 +676,23 @@ namespace PriceIndex
             locked = false;
             tier = Tiers.ForTag(info);
 
+            // Wait until the USD/EUR/GP course is real. Showing early produced raw
+            // rouble tags that changed when the item was moved and redrawn later.
+            if (!Prices.PrimaryIsRoubles && Prices.Course(Prices.PrimaryId) == null)
+                return null;
+
             double? roubles;
             switch (Prices.FleaShown ? Plugin.IconPrice.Value : IconPrice.Trader)
             {
                 case IconPrice.Flea:
+                    if (info.FleaLoading)
+                        return null;
                     roubles = info.FleaTotal;
                     locked = info.FleaLocked;
                     break;
                 case IconPrice.Trader:
+                    if (info.TraderLoading)
+                        return null;
                     roubles = info.TraderRoubles;
                     break;
                 default:

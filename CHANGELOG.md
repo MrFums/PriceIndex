@@ -2,7 +2,10 @@
 
 ## 1.4.0
 
-- New **Primary currency** in General (RUB, USD, EUR or GP): flea prices, trader comparisons, money worth, price tags and colour tiers use this currency. Offers are converted with the traders' exchange rates. For servers that disable roubles (for example Anarchy Flea's Currency Economy), set this to USD, EUR or GP. Colour tier thresholds are amounts in the primary currency - lower the defaults if you leave RUB.
+- New **Primary currency** in General (RUB, USD, EUR or GP): flea prices, trader comparisons, money worth, price tags and colour tiers use this currency. Offers are converted with the traders' exchange rates. For servers that disable roubles (for example Anarchy Flea's Currency Economy), set this to USD, EUR or GP. Colour tier thresholds are amounts in the primary currency — lower the defaults if you leave RUB.
+- Fixed USD/EUR/GP tags sometimes showing raw rouble amounts (and different prices on identical stackable/moddable items) when an exchange rate of 1 was picked up before trader supply data finished loading.
+- Exchange rate no longer depends only on trader courses (which can break when Anarchy Flea disables rouble offers). It now falls back to the handbook price of $1/€1/1 GP, then a built-in rate, and **Rubles per primary currency** in Advanced can override it.
+- Fixed tags getting stuck on wrong amounts (often ~23k) when a trader paid in GP/USD and `GetUserItemPrice` threw because that currency was missing from `CurrencyCourses`. Missing courses are filled from the handbook/fallback rate so GP/USD traders still count; the old crash that aborted the whole update is gone.
 
 ## 1.3.0
 

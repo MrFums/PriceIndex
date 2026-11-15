@@ -941,13 +941,19 @@ namespace PriceIndex
                     continue;
                 }
 
+                // Fill missing USD/EUR/GP courses before the game looks them up.
+                // Anarchy Flea can set payouts to GP/USD while CurrencyCourses lacks that key;
+                // GetUserItemPrice then throws and that trader would be ignored.
+                EnsureCurrencyCourses(trader);
+
                 Trader.ItemPrice? price;
                 try
                 {
                     price = trader.GetUserItemPrice(item);
                 }
-                catch (OverflowException)
+                catch (Exception)
                 {
+                    // Still skip if the game can't price this item for this trader.
                     continue;
                 }
 
@@ -955,7 +961,15 @@ namespace PriceIndex
                     continue;
 
                 MongoID currency = price.Value.CurrencyId.Value;
-                double roubles = price.Value.Amount * Rate(trader, currency);
+                double rate = Rate(trader, currency);
+                if (rate <= 0)
+                {
+                    loading = true;
+                    LoadTraders(onLoaded);
+                    continue;
+                }
+
+                double roubles = price.Value.Amount * rate;
                 if (roubles > best.Roubles)
                 {
                     best = new TraderOffer
@@ -969,6 +983,36 @@ namespace PriceIndex
             }
 
             return best.Trader != null;
+        }
+
+        private static void EnsureCurrencyCourses(Trader trader)
+        {
+            EnsureCourseEntry(trader, CurrencyUtil.ROUBLE_ID);
+            EnsureCourseEntry(trader, CurrencyUtil.DOLLAR_ID);
+            EnsureCourseEntry(trader, CurrencyUtil.EURO_ID);
+            EnsureCourseEntry(trader, CurrencyUtil.GP_ID);
+        }
+
+        private static void EnsureCourseEntry(Trader trader, MongoID currency)
+        {
+            double? rate = Course(currency);
+            if (rate == null || rate <= 0)
+                return;
+
+            WriteCourse(trader._supplyData?.CurrencyCourses, currency, rate.Value);
+            WriteCourse(trader.CurrencyCourses, currency, rate.Value);
+        }
+
+        private static void WriteCourse(Dictionary<string, double> courses, MongoID currency, double rate)
+        {
+            if (courses == null)
+                return;
+
+            string key = currency.ToString();
+            // Replace missing or placeholder (1) rates so GetUserItemPrice does not throw / mis-convert.
+            if (courses.TryGetValue(key, out double existing) && PlausibleCourse(currency, existing))
+                return;
+            courses[key] = rate;
         }
 
         public static MongoID PrimaryId
@@ -991,30 +1035,153 @@ namespace PriceIndex
 
         public static bool PrimaryIsRoubles => Plugin.ValueCurrency.Value == PrimaryCurrency.RUB;
 
+        private struct CourseEntry
+        {
+            public double Rate;
+            public string Source;
+        }
+
+        // Per-currency cache. Single-slot cache used to clobber USD when GP was resolved for traders.
+        private static readonly Dictionary<string, CourseEntry> Courses = new Dictionary<string, CourseEntry>();
+
+        // Used when traders/handbook have nothing usable (common once RUB offers are disabled).
+        private const double FallbackUsd = 140d;
+        private const double FallbackEur = 160d;
+        private const double FallbackGp = 38000d;
+
+        public static void ResetCourse()
+        {
+            Courses.Clear();
+        }
+
         /// <summary>Rouble exchange rate for a currency (roubles per 1 unit), or null if not loaded yet.</summary>
         public static double? Course(MongoID currency)
         {
             if (currency == CurrencyUtil.ROUBLE_ID)
                 return 1d;
 
-            var traders = Session?.Traders;
-            if (traders == null)
-                return null;
-
-            foreach (Trader trader in traders)
+            string key = currency.ToString();
+            double rate = ResolveCourse(currency, out string source);
+            if (rate <= 1d)
             {
-                if (trader?._supplyData?.CurrencyCourses != null
-                    && trader._supplyData.CurrencyCourses.TryGetValue(currency.ToString(), out double rate)
-                    && rate > 0)
-                    return rate;
-
-                if (trader?.CurrencyCourses != null
-                    && trader.CurrencyCourses.TryGetValue(currency.ToString(), out rate)
-                    && rate > 0)
-                    return rate;
+                LoadTraders(Redraw.OnPrice);
+                return null;
             }
 
-            return null;
+            bool changed = !Courses.TryGetValue(key, out CourseEntry previous)
+                           || previous.Rate != rate
+                           || previous.Source != source;
+            if (changed)
+            {
+                Courses[key] = new CourseEntry { Rate = rate, Source = source };
+                if (currency == PrimaryId)
+                {
+                    Plugin.Log.LogInfo(
+                        $"Primary currency course ready ({source}): {Plugin.ValueCurrency.Value} = {rate:0.##} roubles each. "
+                        + "Flea amounts stay in roubles from Better Flea; tags convert with this rate.");
+                    Redraw.Changed();
+                }
+            }
+
+            return rate;
+        }
+
+        private static double ResolveCourse(MongoID currency, out string source)
+        {
+            source = null;
+            int overrideRate = Plugin.RublesPerPrimary != null ? Plugin.RublesPerPrimary.Value : 0;
+            if (overrideRate > 0 && currency == PrimaryId && PlausibleCourse(currency, overrideRate))
+            {
+                source = "config";
+                return overrideRate;
+            }
+
+            double trader = TraderCourse(currency);
+            if (PlausibleCourse(currency, trader))
+            {
+                source = "trader";
+                return trader;
+            }
+
+            double handbook = HandbookCourse(currency);
+            if (PlausibleCourse(currency, handbook))
+            {
+                source = "handbook";
+                return handbook;
+            }
+
+            double fallback = FallbackCourse(currency);
+            if (fallback > 1d)
+            {
+                source = "fallback";
+                return fallback;
+            }
+
+            source = null;
+            return 0;
+        }
+
+        private static double TraderCourse(MongoID currency)
+        {
+            var traders = Session?.Traders;
+            if (traders == null)
+                return 0;
+
+            string key = currency.ToString();
+            double best = 0;
+            foreach (Trader trader in traders)
+            {
+                // Only supply data — trader.CurrencyCourses alone can be a placeholder of 1.
+                if (trader?._supplyData?.CurrencyCourses == null)
+                    continue;
+                if (!trader._supplyData.CurrencyCourses.TryGetValue(key, out double rate))
+                    continue;
+                if (!PlausibleCourse(currency, rate))
+                    continue;
+                if (rate > best)
+                    best = rate;
+            }
+
+            return best;
+        }
+
+        private static double HandbookCourse(MongoID currency)
+        {
+            try
+            {
+                // CreditsPrice is the handbook rouble value of one unit of that currency.
+                var templates = Singleton<ItemFactory>.Instance?.ItemTemplates;
+                if (templates != null && templates.TryGetValue(currency, out ItemTemplate template)
+                    && PlausibleCourse(currency, template.CreditsPrice))
+                    return template.CreditsPrice;
+            }
+            catch (Exception e)
+            {
+                Plugin.Log.LogWarning($"Could not read handbook currency course: {e.Message}");
+            }
+
+            return 0;
+        }
+
+        private static double FallbackCourse(MongoID currency)
+        {
+            if (currency == CurrencyUtil.DOLLAR_ID)
+                return FallbackUsd;
+            if (currency == CurrencyUtil.EURO_ID)
+                return FallbackEur;
+            if (currency == CurrencyUtil.GP_ID)
+                return FallbackGp;
+            return 0;
+        }
+
+        private static bool PlausibleCourse(MongoID currency, double rate)
+        {
+            if (rate <= 1d)
+                return false;
+            // GP coins are thousands of roubles; USD/EUR are typically ~100–200.
+            if (currency == CurrencyUtil.GP_ID)
+                return rate >= 1000d;
+            return rate >= 10d;
         }
 
         public static double? ToPrimary(double roubles)
@@ -1023,7 +1190,7 @@ namespace PriceIndex
                 return roubles;
 
             double? rate = Course(PrimaryId);
-            if (rate == null || rate <= 0)
+            if (rate == null)
                 return null;
             return roubles / rate.Value;
         }
@@ -1034,7 +1201,7 @@ namespace PriceIndex
                 return amount;
 
             double? rate = Course(currency);
-            if (rate == null || rate <= 0)
+            if (rate == null)
                 return null;
             return amount * rate.Value;
         }
@@ -1068,13 +1235,25 @@ namespace PriceIndex
         {
             if (currency == CurrencyUtil.ROUBLE_ID)
                 return 1d;
-            if (trader.CurrencyCourses != null && trader.CurrencyCourses.TryGetValue(currency.ToString(), out double rate) && rate > 0)
-                return rate;
+
+            // Prefer the shared course (handbook / config / fallback). Trader tables may
+            // still hold placeholders even after EnsureCurrencyCourses on other traders.
+            double? global = Course(currency);
+            if (global != null)
+                return global.Value;
+
+            string key = currency.ToString();
             if (trader._supplyData?.CurrencyCourses != null
-                && trader._supplyData.CurrencyCourses.TryGetValue(currency.ToString(), out rate)
-                && rate > 0)
+                && trader._supplyData.CurrencyCourses.TryGetValue(key, out double rate)
+                && PlausibleCourse(currency, rate))
                 return rate;
-            return Course(currency) ?? 1d;
+
+            if (trader.CurrencyCourses != null
+                && trader.CurrencyCourses.TryGetValue(key, out rate)
+                && PlausibleCourse(currency, rate))
+                return rate;
+
+            return 0d;
         }
 
         private static async void LoadSupplyData(IEftSession session, Trader trader, Action onLoaded)
