@@ -282,7 +282,9 @@ namespace PriceIndex
             }
         }
 
-        private static bool FleaOff => RagFair.Settings != null && !RagFair.Settings.enabled;
+        private static bool FleaOff => !Plugin.ShowFlea.Value || RagFair.Settings != null && !RagFair.Settings.enabled;
+
+        public static bool FleaShown => !FleaOff;
 
         private static bool CanSend(bool warm)
         {
@@ -1021,11 +1023,9 @@ namespace PriceIndex
             }
             finally
             {
+                SupplyRequested.Remove(trader.Id);
                 if (trader._supplyData == null)
-                {
-                    SupplyRequested.Remove(trader.Id);
                     SupplyRetryAt[trader.Id] = Time.realtimeSinceStartup + Redraw.RetrySeconds;
-                }
             }
         }
 
@@ -1141,7 +1141,8 @@ namespace PriceIndex
         {
             int stack = Math.Max(1, item.StackObjectsCount);
             int count = ShopStock(item) ? 1 : stack;
-            var info = new PriceInfo { Count = count };
+            IntVec2 size = item.CalculateCellSize();
+            var info = new PriceInfo { Count = count, Slots = Math.Max(1, size.X * size.Y) };
             bool hasContents = item.GetAllItems().Any(part => part != item && part.CurrentAddress is GridItemAddress);
 
             var fleaTip = new StringBuilder();
@@ -1161,8 +1162,8 @@ namespace PriceIndex
                     info.FleaBanned = block != null;
                     if (info.FleaLocked)
                         info.FleaName = "Flea market (locked)";
-                    info.FleaValue = Amount(each, total, count, null);
-                    info.FleaText = Amount(each, total, count, CurrencyUtil.ROUBLE_ID);
+                    info.FleaValue = Amount(each, total, count, null) + info.PerSlot(total, null);
+                    info.FleaText = Amount(each, total, count, CurrencyUtil.ROUBLE_ID) + info.PerSlot(total, CurrencyUtil.ROUBLE_ID);
                     fleaTip.Append("Sells for about ").Append(Prices.Money(total, CurrencyUtil.ROUBLE_ID));
                     if (count > 1)
                         fleaTip.Append(" (").Append(Prices.Money(each, CurrencyUtil.ROUBLE_ID)).Append(" each)");
@@ -1212,8 +1213,8 @@ namespace PriceIndex
                 info.TraderName = best.Trader.LocalizedName;
                 info.TraderCurrency = best.Currency;
                 info.TraderRoubles = roubles;
-                info.TraderValue = Amount(traderEach, traderTotal, count, null);
-                info.TraderText = Amount(traderEach, traderTotal, count, best.Currency);
+                info.TraderValue = Amount(traderEach, traderTotal, count, null) + info.PerSlot(traderTotal, null);
+                info.TraderText = Amount(traderEach, traderTotal, count, best.Currency) + info.PerSlot(traderTotal, best.Currency);
                 traderTip.Append(best.Trader.LocalizedName).Append(" pays the most: ").Append(Prices.Money(traderTotal, best.Currency));
                 if (best.Currency != CurrencyUtil.ROUBLE_ID)
                     traderTip.Append(" (").Append(Prices.Money(roubles, CurrencyUtil.ROUBLE_ID)).Append(')');
@@ -1258,8 +1259,6 @@ namespace PriceIndex
             info.ColourTrader = info.TraderRoubles;
             info.IsAmmo = item is Ammo;
             info.Kind = Tiers.KindOf(item);
-            IntVec2 size = item.CalculateCellSize();
-            info.Slots = Math.Max(1, size.X * size.Y);
             if (Plugin.ColourFullStacks.Value && item.StackMaxSize > 1)
             {
                 double scale = (item is Ammo ? AmmoRounds : item.StackMaxSize) / (double)count;
@@ -1302,6 +1301,14 @@ namespace PriceIndex
         {
             EOwnerType? owner = item.Owner?.OwnerType;
             return owner == EOwnerType.Trader || owner == EOwnerType.RagFair || item.StackObjectsCount > item.StackMaxSize;
+        }
+
+        private string PerSlot(double total, MongoID? currency)
+        {
+            if (!Plugin.PerSlot.Value || Slots <= 1)
+                return string.Empty;
+            double each = total / Slots;
+            return "  ·  " + (currency == null ? Prices.Money(each) : Prices.Money(each, currency.Value)) + "/slot";
         }
 
         private static string Amount(double each, double total, int count, MongoID? currency)

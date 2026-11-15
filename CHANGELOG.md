@@ -1,5 +1,13 @@
 ﻿# Changelog
 
+## 1.3.0
+
+- Trader prices show again after a raid. They stayed at "..." in the stash until you sold something to a trader, because the trader price lists weren't asked for again.
+- Coloured item backgrounds no longer hide the game's own highlights. Hovering an item lights it up again, and dragging an item shows the soft yellow highlight on the containers and stacks it can go into. Red backgrounds for guns missing parts and the repair buff's gold show through too.
+- New **Colours show in** in F12: where backgrounds and names on items are coloured, Stash, Raid or both. It no longer follows **Price on items shows in**, so you can keep the colours in a raid with no price tags.
+- New **Flea prices** (on by default): untick to hide the flea market everywhere. The hover tooltip and inspect window show only the trader line, prices on items show the trader's price, colours use the trader's price and there's no flea-banned highlight. No flea prices are asked for. The flea is hidden the same way when the server has the flea market turned off.
+- New **Price per slot** (off by default): items bigger than one slot also show what they're worth per slot in the hover tooltip and inspect window, so a 4-slot item worth 20,000 shows 5,000/slot after its price.
+
 ## 1.2.4
 
 - New **Colour categories** in F12: tick which kinds of item get colours (Weapons, Weapon parts, Ammo, Gear, Containers, Keys, Meds, Food, Barter, Info, Money, Other). All are ticked by default. Untick one, such as Keys or Ammo, and those items get no background, name colour, price colour or flea-banned highlight.

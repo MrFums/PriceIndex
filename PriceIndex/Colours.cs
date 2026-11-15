@@ -123,7 +123,7 @@ namespace PriceIndex
 
         public static bool ShowsBanned(Item item)
         {
-            if (!Plugin.ColourEnabled.Value || !Plugin.HighlightBanned.Value || !Coloured(KindOf(item)) || !Prices.IsFleaBanned(item))
+            if (!Plugin.ColourEnabled.Value || !Plugin.HighlightBanned.Value || !Prices.FleaShown || !Coloured(KindOf(item)) || !Prices.IsFleaBanned(item))
                 return false;
             return !(item is Ammo && ItemBackgroundOn && Plugin.ColourBannedAmmo.Value);
         }
@@ -247,7 +247,7 @@ namespace PriceIndex
             bool banned = info.FleaBanned && !(info.IsAmmo && Plugin.ColourBannedAmmo.Value && info.ColourFlea != null);
             double? flea = banned ? null : info.ColourFlea;
             double? roubles;
-            switch (Plugin.ColourSource.Value)
+            switch (Prices.FleaShown ? Plugin.ColourSource.Value : ColourBy.Trader)
             {
                 case ColourBy.Flea:
                     if (info.FleaLoading)

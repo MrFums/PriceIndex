@@ -91,7 +91,7 @@ namespace PriceIndex
     {
         public const string Guid = "com.fums.priceindex";
         public const string Name = "Fums-PriceIndex";
-        public const string Version = "1.2.4";
+        public const string Version = "1.3.0";
 
         internal static ManualLogSource Log;
 
@@ -104,6 +104,9 @@ namespace PriceIndex
         internal static ConfigEntry<int> TagSize;
         internal static ConfigEntry<IconPosition> IconPosition;
         internal static ConfigEntry<bool> IncludeFence;
+        internal static ConfigEntry<bool> ShowFlea;
+        internal static ConfigEntry<bool> PerSlot;
+        internal static ConfigEntry<ShowIn> ColoursIn;
         internal static ConfigEntry<int> RefreshSeconds;
         internal static ConfigEntry<ColourBy> ColourSource;
         internal static ConfigEntry<Color> ColourBlocked;
@@ -176,8 +179,17 @@ namespace PriceIndex
                 new ConfigDescription("How big the price tag on items is, text and all, as a percentage of the normal size.",
                     new AcceptableValueRange<int>(80, 150)));
             TagSize.SettingChanged += (_, __) => IconPatches.RedrawAll();
+            PerSlot = Config.Bind("1. Display", "Price per slot", false,
+                "Add what the item is worth per slot it takes up, after its price in the hover tooltip and inspect window. "
+                + "Only for items bigger than one slot: an item worth 20,000 that takes 4 slots also shows 5,000/slot. "
+                + "Takes effect the next time a tooltip or window opens.");
             IncludeFence = Config.Bind("2. General", "Include Fence", true,
                 "Count Fence when looking for the trader who pays the most.");
+            ShowFlea = Config.Bind("2. General", "Flea prices", true,
+                "Show flea market prices. Untick to hide the flea market everywhere: no flea line in the hover tooltip "
+                + "or inspect window, prices on items show the best trader's price, colours use the trader's price "
+                + "and there's no flea-banned highlight. No flea prices are asked for. "
+                + "The flea is also hidden when the server has the flea market turned off.");
             RefreshSeconds = Config.Bind("3. Advanced", "Flea price refresh (seconds)", 120,
                 new ConfigDescription("How long a flea price is kept before it is asked for again. "
                                       + "Better Flea's prices drift over time, so they're asked for again now and then.",
@@ -185,10 +197,13 @@ namespace PriceIndex
 
             const string colours = "4. Colours";
             ColourEnabled = Config.Bind(colours, "Colours", false,
-                Describe("Colour things by how much the item is worth, using the tiers below. Untick to turn all colours off.", 100));
+                Describe("Colour things by how much the item is worth, using the tiers below. Untick to turn all colours off.", 101));
+            ColoursIn = Config.Bind(colours, "Colours show in", ShowIn.Stash | ShowIn.Raid,
+                Describe("Where item backgrounds and names on items are coloured. It doesn't depend on Price on items shows in, "
+                         + "so you can have colours in a raid without the price tags. " + WhereText, 100));
             ColourSource = Config.Bind(colours, "Colours based on", ColourBy.Most,
                 Describe("Which price picks the tier. Most: whichever pays more, the flea or the best trader. "
-                         + "Flea: the flea price. Trader: the best trader's.", 99));
+                         + "Flea: the flea price. Trader: the best trader's. With Flea prices unticked, colours always use the trader's price.", 99));
             ColourNames = Config.Bind(colours, "Colour item names", NameColour.Both,
                 Describe("Colour the item's name. OnItems: on the item in the stash and inventory. OnHover: in the hover tooltip. "
                          + "Both: in both places. Money is coloured by how much the stack is worth.", 98));
@@ -269,6 +284,8 @@ namespace PriceIndex
             ColourFullMoney.SettingChanged += (_, __) => ColoursChanged();
             ColourBannedAmmo.SettingChanged += (_, __) => ColoursChanged();
             ColourSource.SettingChanged += (_, __) => ColoursChanged();
+            ColoursIn.SettingChanged += (_, __) => ColoursChanged();
+            ShowFlea.SettingChanged += (_, __) => ColoursChanged();
 
             var harmony = new Harmony(Guid);
             try

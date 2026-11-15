@@ -112,10 +112,14 @@ namespace PriceIndex
                 Waiting.Add(panel);
 
             Color32? tint = Tiers.ForText(info);
+            ItemAttribute trader = Row(PriceRow.Trader, info.TraderName, Tiers.Wrap(info.TraderValue, tint), info.TraderTip, info.TraderCurrency);
+            if (!Prices.FleaShown)
+                return new[] { trader };
+
             return new[]
             {
                 Row(PriceRow.Flea, info.FleaName, Tiers.Wrap(info.FleaValue, tint), info.FleaTip, CurrencyUtil.ROUBLE_ID),
-                Row(PriceRow.Trader, info.TraderName, Tiers.Wrap(info.TraderValue, tint), info.TraderTip, info.TraderCurrency)
+                trader
             };
         }
 
@@ -202,6 +206,9 @@ namespace PriceIndex
             for (int i = 0; i < line.Rows.Length; i++)
             {
                 CompactCharacteristicPanel row = line.Rows[i];
+                row.gameObject.SetActive(i < rows.Length);
+                if (i >= rows.Length)
+                    continue;
                 row.Show(rows[i], tooltip, true);
                 row.CompareWith(null);
                 SetIcon(rows[i], row);
@@ -386,10 +393,10 @@ namespace PriceIndex
 
             Color32? tint = Tiers.ForText(info);
             string value = tint != null ? Tiers.Hexcode(tint.Value) : Value;
-            return head + new StringBuilder("\n")
-                .Append(Colour(Label, info.FleaName + "  ")).Append(Colour(value, info.FleaText)).Append('\n')
-                .Append(Colour(Label, info.TraderName + "  ")).Append(Colour(value, info.TraderText))
-                .ToString();
+            var lines = new StringBuilder("\n");
+            if (Prices.FleaShown)
+                lines.Append(Colour(Label, info.FleaName + "  ")).Append(Colour(value, info.FleaText)).Append('\n');
+            return head + lines.Append(Colour(Label, info.TraderName + "  ")).Append(Colour(value, info.TraderText)).ToString();
         }
 
         private static string ComposeMoney()
@@ -475,8 +482,8 @@ namespace PriceIndex
             }
 
             bool locked = false;
-            bool shows = Shows(cell, item);
-            bool tagged = Plugin.IconPrice.Value != IconPrice.Off && shows;
+            bool shows = Shows(cell, item, Plugin.ColoursIn.Value);
+            bool tagged = Plugin.IconPrice.Value != IconPrice.Off && Shows(cell, item, Plugin.IconIn.Value);
             bool named = shows && Tiers.NamesOnItems;
             bool backed = shows && Tiers.ItemBackgroundOn;
             PriceInfo info = tagged || named || backed ? PriceInfo.For(item, Redraw.OnPrice, false, NeedsFlea(tagged, named, backed)) : null;
@@ -547,15 +554,15 @@ namespace PriceIndex
             return tag || colour;
         }
 
-        private static bool Shows(ItemView cell, Item item)
+        private static bool Shows(ItemView cell, Item item, ShowIn where)
         {
-            return cell is GridItemView && cell.IsSearched && cell.Examined && PriceInfo.Shows(item, Plugin.IconIn.Value)
+            return cell is GridItemView && cell.IsSearched && cell.Examined && PriceInfo.Shows(item, where)
                    && cell.ItemContext != null && cell.ItemContext.HasViewComponent(EItemViewComponent.QuestItem);
         }
 
         private static bool ShowsMoney(ItemView cell, Item item)
         {
-            return cell is GridItemView && cell.IsSearched && cell.Examined && PriceInfo.ShowsMoney(item, Plugin.IconIn.Value);
+            return cell is GridItemView && cell.IsSearched && cell.Examined && PriceInfo.ShowsMoney(item, Plugin.ColoursIn.Value);
         }
 
         private static bool Warms(ItemView cell, Item item)
@@ -574,30 +581,40 @@ namespace PriceIndex
                     return;
                 holder = cell.gameObject.AddComponent<CellTint>();
                 holder.Caption = (cell as GridItemView)?.Caption;
-                holder.Panel = cell.ColorPanel;
+                holder.View = cell;
             }
 
             holder.Name = name;
             holder.Back = back;
-            holder.Apply(true);
+            holder.Apply();
         }
 
         private class CellTint : MonoBehaviour
         {
+            private static readonly AccessTools.FieldRef<ItemView, bool> Highlighted =
+                AccessTools.FieldRefAccess<ItemView, bool>("Highlighted");
+
+            private static readonly AccessTools.FieldRef<ItemView, bool> HighlightedGlobally =
+                AccessTools.FieldRefAccess<ItemView, bool>("HighlightedGlobally");
+
+            private static readonly AccessTools.FieldRef<ItemView, Color> BackgroundColour =
+                AccessTools.FieldRefAccess<ItemView, Color>("BackgroundColor");
+
+            private static readonly AccessTools.FieldRef<ItemView, Color> OriginalBackgroundColour =
+                AccessTools.FieldRefAccess<ItemView, Color>("OriginalBackgroundColor");
+
+            public ItemView View;
             public TextMeshProUGUI Caption;
-            public Image Panel;
             public Color32? Name;
             public Color32? Back;
 
             private string shownName;
             private Color32? shownTint;
             private bool backApplied;
-            private Color backSet;
-            private Color backOriginal;
 
             private void LateUpdate()
             {
-                Apply(false);
+                Apply();
             }
 
             private static string Bare(string text)
@@ -611,7 +628,7 @@ namespace PriceIndex
                 return text;
             }
 
-            public void Apply(bool capture)
+            public void Apply()
             {
                 if (Caption != null)
                 {
@@ -629,25 +646,25 @@ namespace PriceIndex
                     }
                 }
 
-                if (Panel != null)
+                if (View == null || View.ColorPanel == null)
+                    return;
+
+                if (Back != null)
                 {
-                    Color current = Panel.color;
-                    if (Back != null)
-                    {
-                        if (capture && (!backApplied || current != backSet))
-                            backOriginal = current;
-                        backApplied = true;
-                        backSet = Tiers.Panel(Back.Value);
-                        backSet.a = Mathf.Max(backOriginal.a, 0.85f);
-                        if (current != backSet)
-                            Panel.color = backSet;
-                    }
-                    else if (backApplied)
-                    {
-                        backApplied = false;
-                        if (current == backSet)
-                            Panel.color = backOriginal;
-                    }
+                    backApplied = true;
+                    Color original = OriginalBackgroundColour(View);
+                    if (Highlighted(View) || HighlightedGlobally(View) || BackgroundColour(View) != original)
+                        return;
+
+                    Color wanted = Tiers.Panel(Back.Value);
+                    wanted.a = Mathf.Max(original.a, 0.85f);
+                    if (View.ColorPanel.color != wanted)
+                        View.ColorPanel.color = wanted;
+                }
+                else if (backApplied)
+                {
+                    backApplied = false;
+                    View.UpdateColor();
                 }
             }
         }
@@ -658,7 +675,7 @@ namespace PriceIndex
             tier = Tiers.ForTag(info);
 
             double? roubles;
-            switch (Plugin.IconPrice.Value)
+            switch (Prices.FleaShown ? Plugin.IconPrice.Value : IconPrice.Trader)
             {
                 case IconPrice.Flea:
                     roubles = info.FleaTotal;
