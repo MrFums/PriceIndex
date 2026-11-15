@@ -38,7 +38,7 @@ Press **F12** in game > Fums-PriceIndex.
 - **Stacks**: price one item, the whole stack, or both.
 - **Shows in**: the inspect window, hover tooltip and price on items each have their own. Tick Stash, Raid, or both.
 - **Price tag size on items**: make the price tag bigger or smaller.
-- **Include Fence**, and how often flea prices are asked for again.
+- **Include Fence**, **Primary currency** (RUB, USD, EUR or GP for prices, tags and colour tiers — use when a server has disabled roubles), and how often flea prices are asked for again.
 
 ### Colours
 Colour items by how much they're worth. Off by default: tick **Colours** to turn it on.

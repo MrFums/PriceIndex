@@ -180,10 +180,10 @@ namespace PriceIndex
         {
             if (!FleaOff)
                 TryGetFlea(item, out _, out _, null, false, true);
-            LoadTraders();
+            LoadTraders(Redraw.OnPrice);
         }
 
-        private static void LoadTraders()
+        public static void LoadTraders(Action onLoaded = null)
         {
             var session = Session;
             if (session?.Traders == null)
@@ -191,7 +191,7 @@ namespace PriceIndex
             foreach (Trader trader in session.Traders)
             {
                 if (trader?.Info != null && trader.Info.Available && trader._supplyData == null)
-                    LoadSupplyData(session, trader, Redraw.OnPrice);
+                    LoadSupplyData(session, trader, onLoaded ?? Redraw.OnPrice);
             }
         }
 
@@ -233,7 +233,7 @@ namespace PriceIndex
 
         private static void Preload()
         {
-            LoadTraders();
+            LoadTraders(Redraw.OnPrice);
             bool inRaid = InRaid;
             if (inRaid != _wasInRaid)
             {
@@ -971,12 +971,86 @@ namespace PriceIndex
             return best.Trader != null;
         }
 
-        public static double? MoneyColourRoubles(Item item)
+        public static MongoID PrimaryId
+        {
+            get
+            {
+                switch (Plugin.ValueCurrency.Value)
+                {
+                    case PrimaryCurrency.USD:
+                        return CurrencyUtil.DOLLAR_ID;
+                    case PrimaryCurrency.EUR:
+                        return CurrencyUtil.EURO_ID;
+                    case PrimaryCurrency.GP:
+                        return CurrencyUtil.GP_ID;
+                    default:
+                        return CurrencyUtil.ROUBLE_ID;
+                }
+            }
+        }
+
+        public static bool PrimaryIsRoubles => Plugin.ValueCurrency.Value == PrimaryCurrency.RUB;
+
+        /// <summary>Rouble exchange rate for a currency (roubles per 1 unit), or null if not loaded yet.</summary>
+        public static double? Course(MongoID currency)
+        {
+            if (currency == CurrencyUtil.ROUBLE_ID)
+                return 1d;
+
+            var traders = Session?.Traders;
+            if (traders == null)
+                return null;
+
+            foreach (Trader trader in traders)
+            {
+                if (trader?._supplyData?.CurrencyCourses != null
+                    && trader._supplyData.CurrencyCourses.TryGetValue(currency.ToString(), out double rate)
+                    && rate > 0)
+                    return rate;
+
+                if (trader?.CurrencyCourses != null
+                    && trader.CurrencyCourses.TryGetValue(currency.ToString(), out rate)
+                    && rate > 0)
+                    return rate;
+            }
+
+            return null;
+        }
+
+        public static double? ToPrimary(double roubles)
+        {
+            if (PrimaryIsRoubles)
+                return roubles;
+
+            double? rate = Course(PrimaryId);
+            if (rate == null || rate <= 0)
+                return null;
+            return roubles / rate.Value;
+        }
+
+        public static double? ToRoubles(double amount, MongoID currency)
+        {
+            if (currency == CurrencyUtil.ROUBLE_ID)
+                return amount;
+
+            double? rate = Course(currency);
+            if (rate == null || rate <= 0)
+                return null;
+            return amount * rate.Value;
+        }
+
+        public static double? MoneyColourValue(Item item)
+        {
+            double? value = MoneyValue(item);
+            if (value == null || !Plugin.ColourFullMoney.Value || item.StackMaxSize <= 1)
+                return value;
+            return value / Math.Max(1, item.StackObjectsCount) * item.StackMaxSize;
+        }
+
+        public static double? MoneyValue(Item item)
         {
             double? roubles = MoneyRoubles(item);
-            if (roubles == null || !Plugin.ColourFullMoney.Value || item.StackMaxSize <= 1)
-                return roubles;
-            return roubles / Math.Max(1, item.StackObjectsCount) * item.StackMaxSize;
+            return roubles == null ? null : ToPrimary(roubles.Value);
         }
 
         public static double? MoneyRoubles(Item item)
@@ -986,21 +1060,21 @@ namespace PriceIndex
             if (currency == CurrencyUtil.ROUBLE_ID)
                 return count;
 
-            var traders = Session?.Traders;
-            if (traders == null)
-                return null;
-            foreach (Trader trader in traders)
-            {
-                if (trader?._supplyData?.CurrencyCourses != null && trader._supplyData.CurrencyCourses.TryGetValue(currency.ToString(), out double rate) && rate > 0)
-                    return count * rate;
-            }
-
-            return null;
+            double? rate = Course(currency);
+            return rate == null ? null : count * rate.Value;
         }
 
         private static double Rate(Trader trader, MongoID currency)
         {
-            return trader.CurrencyCourses.TryGetValue(currency.ToString(), out double rate) ? rate : 1d;
+            if (currency == CurrencyUtil.ROUBLE_ID)
+                return 1d;
+            if (trader.CurrencyCourses != null && trader.CurrencyCourses.TryGetValue(currency.ToString(), out double rate) && rate > 0)
+                return rate;
+            if (trader._supplyData?.CurrencyCourses != null
+                && trader._supplyData.CurrencyCourses.TryGetValue(currency.ToString(), out rate)
+                && rate > 0)
+                return rate;
+            return Course(currency) ?? 1d;
         }
 
         private static async void LoadSupplyData(IEftSession session, Trader trader, Action onLoaded)
@@ -1041,7 +1115,15 @@ namespace PriceIndex
                 return "$" + number;
             if (currency == CurrencyUtil.EURO_ID)
                 return "€" + number;
+            if (currency == CurrencyUtil.GP_ID)
+                return number + " GP";
             return number + " ₽";
+        }
+
+        public static string PrimaryMoney(double roubles)
+        {
+            double? primary = ToPrimary(roubles);
+            return primary == null ? "..." : Money(primary.Value, PrimaryId);
         }
     }
 
@@ -1145,6 +1227,13 @@ namespace PriceIndex
             var info = new PriceInfo { Count = count, Slots = Math.Max(1, size.X * size.Y) };
             bool hasContents = item.GetAllItems().Any(part => part != item && part.CurrentAddress is GridItemAddress);
 
+            MongoID primary = Prices.PrimaryId;
+            if (!Prices.PrimaryIsRoubles && Prices.Course(primary) == null)
+            {
+                Prices.LoadTraders(onReady);
+                info.Loading = true;
+            }
+
             var fleaTip = new StringBuilder();
             string block = Prices.FleaBlock(item);
             double each = 0;
@@ -1162,12 +1251,23 @@ namespace PriceIndex
                     info.FleaBanned = block != null;
                     if (info.FleaLocked)
                         info.FleaName = "Flea market (locked)";
-                    info.FleaValue = Amount(each, total, count, null) + info.PerSlot(total, null);
-                    info.FleaText = Amount(each, total, count, CurrencyUtil.ROUBLE_ID) + info.PerSlot(total, CurrencyUtil.ROUBLE_ID);
-                    fleaTip.Append("Sells for about ").Append(Prices.Money(total, CurrencyUtil.ROUBLE_ID));
-                    if (count > 1)
-                        fleaTip.Append(" (").Append(Prices.Money(each, CurrencyUtil.ROUBLE_ID)).Append(" each)");
-                    fleaTip.Append(exact ? ".\nPrice from Better Flea." : ".\nPrice from the base game.");
+
+                    double? showEach = Prices.ToPrimary(each);
+                    double? showTotal = Prices.ToPrimary(total);
+                    if (showEach == null || showTotal == null)
+                    {
+                        info.FleaValue = info.FleaText = "...";
+                        info.Loading = info.FleaLoading = true;
+                    }
+                    else
+                    {
+                        info.FleaValue = Amount(showEach.Value, showTotal.Value, count, null) + info.PerSlot(showTotal.Value, null);
+                        info.FleaText = Amount(showEach.Value, showTotal.Value, count, primary) + info.PerSlot(showTotal.Value, primary);
+                        fleaTip.Append("Sells for about ").Append(Prices.Money(showTotal.Value, primary));
+                        if (count > 1)
+                            fleaTip.Append(" (").Append(Prices.Money(showEach.Value, primary)).Append(" each)");
+                        fleaTip.Append(exact ? ".\nPrice from Better Flea." : ".\nPrice from the base game.");
+                    }
 
                     if (info.FleaLocked)
                     {
@@ -1213,11 +1313,28 @@ namespace PriceIndex
                 info.TraderName = best.Trader.LocalizedName;
                 info.TraderCurrency = best.Currency;
                 info.TraderRoubles = roubles;
-                info.TraderValue = Amount(traderEach, traderTotal, count, null) + info.PerSlot(traderTotal, null);
-                info.TraderText = Amount(traderEach, traderTotal, count, best.Currency) + info.PerSlot(traderTotal, best.Currency);
+
+                double? primaryEach = Prices.ToPrimary(roubles / Math.Max(1, count));
+                double? primaryTotal = Prices.ToPrimary(roubles);
+                if (primaryEach == null || primaryTotal == null)
+                {
+                    info.TraderValue = info.TraderText = "...";
+                    info.Loading = info.TraderLoading = true;
+                }
+                else if (best.Currency == primary)
+                {
+                    info.TraderValue = Amount(traderEach, traderTotal, count, null) + info.PerSlot(traderTotal, null);
+                    info.TraderText = Amount(traderEach, traderTotal, count, best.Currency) + info.PerSlot(traderTotal, best.Currency);
+                }
+                else
+                {
+                    info.TraderValue = Amount(primaryEach.Value, primaryTotal.Value, count, null) + info.PerSlot(primaryTotal.Value, null);
+                    info.TraderText = Amount(primaryEach.Value, primaryTotal.Value, count, primary) + info.PerSlot(primaryTotal.Value, primary);
+                }
+
                 traderTip.Append(best.Trader.LocalizedName).Append(" pays the most: ").Append(Prices.Money(traderTotal, best.Currency));
-                if (best.Currency != CurrencyUtil.ROUBLE_ID)
-                    traderTip.Append(" (").Append(Prices.Money(roubles, CurrencyUtil.ROUBLE_ID)).Append(')');
+                if (best.Currency != primary && primaryTotal != null)
+                    traderTip.Append(" (").Append(Prices.Money(primaryTotal.Value, primary)).Append(')');
                 if (count > 1)
                     traderTip.Append(", ").Append(Prices.Money(traderEach, best.Currency)).Append(" each");
                 traderTip.Append('.');
@@ -1225,9 +1342,10 @@ namespace PriceIndex
                 if (info.FleaKeep > 0)
                 {
                     double gap = Math.Abs(info.FleaKeep - roubles);
+                    string gapText = Prices.PrimaryMoney(gap);
                     traderTip.Append('\n').Append(info.FleaKeep > roubles
-                        ? "The Flea Market gets you " + Prices.Money(gap, CurrencyUtil.ROUBLE_ID) + " more after its fee."
-                        : best.Trader.LocalizedName + " gets you " + Prices.Money(gap, CurrencyUtil.ROUBLE_ID) + " more than the Flea Market after its fee.");
+                        ? "The Flea Market gets you " + gapText + " more after its fee."
+                        : best.Trader.LocalizedName + " gets you " + gapText + " more than the Flea Market after its fee.");
                 }
             }
             else if (loading)

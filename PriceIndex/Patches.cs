@@ -112,13 +112,14 @@ namespace PriceIndex
                 Waiting.Add(panel);
 
             Color32? tint = Tiers.ForText(info);
-            ItemAttribute trader = Row(PriceRow.Trader, info.TraderName, Tiers.Wrap(info.TraderValue, tint), info.TraderTip, info.TraderCurrency);
+            MongoID currency = Prices.PrimaryId;
+            ItemAttribute trader = Row(PriceRow.Trader, info.TraderName, Tiers.Wrap(info.TraderValue, tint), info.TraderTip, currency);
             if (!Prices.FleaShown)
                 return new[] { trader };
 
             return new[]
             {
-                Row(PriceRow.Flea, info.FleaName, Tiers.Wrap(info.FleaValue, tint), info.FleaTip, CurrencyUtil.ROUBLE_ID),
+                Row(PriceRow.Flea, info.FleaName, Tiers.Wrap(info.FleaValue, tint), info.FleaTip, currency),
                 trader
             };
         }
@@ -401,14 +402,14 @@ namespace PriceIndex
 
         private static string ComposeMoney()
         {
-            double? worth = Prices.MoneyRoubles(_item);
-            Color32? tint = Tiers.ForMoney(Prices.MoneyColourRoubles(_item));
+            double? worth = Prices.MoneyValue(_item);
+            Color32? tint = Tiers.ForMoney(Prices.MoneyColourValue(_item));
             string head = Head(Tiers.NamesOnHover ? tint : null);
             if (worth == null)
                 return head;
 
             string value = Tiers.TextOn && tint != null ? Tiers.Hexcode(tint.Value) : Value;
-            return head + "\n" + Colour(Label, "Worth  ") + Colour(value, Prices.Money(worth.Value, CurrencyUtil.ROUBLE_ID));
+            return head + "\n" + Colour(Label, "Worth  ") + Colour(value, Prices.Money(worth.Value, Prices.PrimaryId));
         }
 
         private static string Head(Color32? tint)
@@ -470,10 +471,10 @@ namespace PriceIndex
             Item item = cell.Item;
             if (ShowsMoney(cell, item))
             {
-                double? roubles = Prices.MoneyColourRoubles(item);
-                if (roubles == null)
+                double? value = Prices.MoneyColourValue(item);
+                if (value == null)
                     Waiting.Add(cell);
-                Color32? worth = Tiers.ForMoney(roubles);
+                Color32? worth = Tiers.ForMoney(value);
                 TintCell(cell, Tiers.NamesOnItems ? worth : null, Tiers.ItemBackgroundOn ? worth : null);
                 Transform moneyTag = cell.transform.Find(LabelName);
                 if (moneyTag != null)
@@ -703,18 +704,36 @@ namespace PriceIndex
             if (roubles != null && Plugin.Stacks.Value == StackPrice.Single)
                 roubles /= info.Count;
 
-            return roubles > 0 ? Short(roubles.Value) : null;
+            double? amount = roubles == null ? null : Prices.ToPrimary(roubles.Value);
+            if (amount == null)
+                return null;
+            return amount > 0 ? Short(amount.Value) : null;
         }
 
-        private static string Short(double roubles)
+        private static string Short(double amount)
         {
-            if (roubles < 1000)
-                return "<1k";
-            if (roubles < 10000)
-                return (roubles / 1000).ToString("0.#", CultureInfo.InvariantCulture) + "k";
-            if (roubles < 1000000)
-                return Math.Round(roubles / 1000).ToString("0") + "k";
-            return (roubles / 1000000).ToString("0.#", CultureInfo.InvariantCulture) + "M";
+            if (Prices.PrimaryIsRoubles)
+            {
+                if (amount < 1000)
+                    return "<1k";
+                if (amount < 10000)
+                    return (amount / 1000).ToString("0.#", CultureInfo.InvariantCulture) + "k";
+                if (amount < 1000000)
+                    return Math.Round(amount / 1000).ToString("0") + "k";
+                return (amount / 1000000).ToString("0.#", CultureInfo.InvariantCulture) + "M";
+            }
+
+            if (amount < 1)
+                return "<1";
+            if (amount < 1000)
+                return amount < 100
+                    ? amount.ToString("0.#", CultureInfo.InvariantCulture)
+                    : Math.Round(amount).ToString("0", CultureInfo.InvariantCulture);
+            if (amount < 10000)
+                return (amount / 1000).ToString("0.#", CultureInfo.InvariantCulture) + "k";
+            if (amount < 1000000)
+                return Math.Round(amount / 1000).ToString("0") + "k";
+            return (amount / 1000000).ToString("0.#", CultureInfo.InvariantCulture) + "M";
         }
 
         private static Placement Create(ItemView cell)
