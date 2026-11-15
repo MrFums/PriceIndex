@@ -85,6 +85,14 @@ namespace PriceIndex
         Both
     }
 
+    public enum Preset
+    {
+        Minimal,
+        Default,
+        Colours,
+        ColoursNoTags
+    }
+
     [BepInPlugin(Guid, Name, Version)]
     [BepInDependency("com.SPT.core", BepInDependency.DependencyFlags.HardDependency)]
     public class Plugin : BaseUnityPlugin
@@ -95,6 +103,13 @@ namespace PriceIndex
 
         internal static ManualLogSource Log;
 
+        private const string DisplaySection = "1. Display";
+        private const string ColoursSection = "4. Colours";
+
+        private static Plugin _instance;
+        private static bool _applying;
+
+        internal static ConfigEntry<Preset> Presets;
         internal static ConfigEntry<InspectStyle> Inspect;
         internal static ConfigEntry<ShowIn> InspectIn;
         internal static ConfigEntry<ShowIn> HoverIn;
@@ -148,6 +163,17 @@ namespace PriceIndex
         private void Awake()
         {
             Log = Logger;
+            _instance = this;
+
+            Presets = Config.Bind("0. Presets", "Preset", Preset.Default,
+                new ConfigDescription("Click one to set up the Display and Colours settings in one go, then change anything you like. "
+                                      + "Minimal: prices in the hover tooltip only. Default: the settings Price Index comes with. "
+                                      + "Colours: the default prices, with items, names and price tags coloured from cheapest to dearest. "
+                                      + "Colours, no tags: items and names coloured, with no price on items. "
+                                      + "Both colour presets colour every item by the price it shows, not by a full stack or a full mag. "
+                                      + "Each one first puts every Display and Colours setting back to its default, tier colours included, "
+                                      + "apart from Colour categories. General and Advanced settings are left alone.",
+                    null, new ConfigurationManagerAttributes { CustomDrawer = PresetButtons.Draw, HideDefaultButton = true }));
 
             Inspect = Config.Bind("1. Display", "Inspect window", InspectStyle.LineUnderStats,
                 "Where the flea and trader prices go in the item's inspect window. "
@@ -178,7 +204,7 @@ namespace PriceIndex
             TagSize = Config.Bind("1. Display", "Price tag size on items", 100,
                 new ConfigDescription("How big the price tag on items is, text and all, as a percentage of the normal size.",
                     new AcceptableValueRange<int>(80, 150)));
-            TagSize.SettingChanged += (_, __) => IconPatches.RedrawAll();
+            TagSize.SettingChanged += (_, __) => RedrawItems();
             PerSlot = Config.Bind("1. Display", "Price per slot", false,
                 "Add what the item is worth per slot it takes up, after its price in the hover tooltip and inspect window. "
                 + "Only for items bigger than one slot: an item worth 20,000 that takes 4 slots also shows 5,000/slot. "
@@ -302,10 +328,10 @@ namespace PriceIndex
                 return;
             }
 
-            IconPrice.SettingChanged += (_, __) => IconPatches.RedrawAll();
-            Stacks.SettingChanged += (_, __) => IconPatches.RedrawAll();
-            IconPosition.SettingChanged += (_, __) => IconPatches.RedrawAll();
-            IconIn.SettingChanged += (_, __) => IconPatches.RedrawAll();
+            IconPrice.SettingChanged += (_, __) => RedrawItems();
+            Stacks.SettingChanged += (_, __) => RedrawItems();
+            IconPosition.SettingChanged += (_, __) => RedrawItems();
+            IconIn.SettingChanged += (_, __) => RedrawItems();
             Logger.LogInfo($"{Name} {Version} loaded.");
         }
 
@@ -317,8 +343,64 @@ namespace PriceIndex
         private void ColoursChanged()
         {
             Tiers.Invalidate();
-            if (_patched)
+            RedrawItems();
+        }
+
+        private void RedrawItems()
+        {
+            if (_patched && !_applying)
                 IconPatches.RedrawAll();
+        }
+
+        internal static void ApplyPreset(Preset preset)
+        {
+            ConfigFile config = _instance.Config;
+            bool save = config.SaveOnConfigSet;
+            config.SaveOnConfigSet = false;
+            _applying = true;
+            try
+            {
+                foreach (var pair in config)
+                {
+                    ConfigEntryBase entry = pair.Value;
+                    string section = entry.Definition.Section;
+                    if ((section == DisplaySection || section == ColoursSection) && entry != ColourCategories)
+                        entry.BoxedValue = entry.DefaultValue;
+                }
+
+                switch (preset)
+                {
+                    case Preset.Minimal:
+                        Inspect.Value = InspectStyle.Off;
+                        IconPrice.Value = PriceIndex.IconPrice.Off;
+                        break;
+                    case Preset.Colours:
+                        ColourEnabled.Value = true;
+                        ColourPrices.Value = PriceColour.TagBackground;
+                        break;
+                    case Preset.ColoursNoTags:
+                        ColourEnabled.Value = true;
+                        IconPrice.Value = PriceIndex.IconPrice.Off;
+                        break;
+                }
+
+                if (preset == Preset.Colours || preset == Preset.ColoursNoTags)
+                {
+                    ColourFullStacks.Value = false;
+                    ColourFullMags.Value = false;
+                    ColourBannedAmmo.Value = false;
+                }
+
+                Presets.Value = preset;
+            }
+            finally
+            {
+                _applying = false;
+                config.SaveOnConfigSet = save;
+            }
+
+            config.Save();
+            _instance.ColoursChanged();
         }
 
         private void Update()

@@ -9,6 +9,29 @@ namespace PriceIndex
     {
         public int? Order;
         public Action<ConfigEntryBase> CustomDrawer;
+        public bool? HideDefaultButton;
+    }
+
+    internal static class PresetButtons
+    {
+        private static readonly (Preset Preset, string Label)[] Shown =
+        {
+            (Preset.Minimal, "Minimal"),
+            (Preset.Default, "Default"),
+            (Preset.Colours, "Colours"),
+            (Preset.ColoursNoTags, "Colours, no tags")
+        };
+
+        public static void Draw(ConfigEntryBase entryBase)
+        {
+            GUILayout.BeginHorizontal();
+            foreach (var shown in Shown)
+            {
+                if (GUILayout.Button(shown.Label))
+                    Plugin.ApplyPreset(shown.Preset);
+            }
+            GUILayout.EndHorizontal();
+        }
     }
 
     internal static class ColourField

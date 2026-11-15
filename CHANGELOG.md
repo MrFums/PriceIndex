@@ -2,6 +2,7 @@
 
 ## 1.3.0
 
+- New **Presets** at the top of F12: one click sets up the Display and Colours settings. Minimal: prices in the hover tooltip only. Default: the settings Price Index comes with. Colours: the default prices, with items, names and price tags coloured from cheapest to dearest. Colours, no tags: items and names coloured, with no price on items. Both colour presets colour every item by the price it shows, not by a full stack or a full mag. Each one puts the Display and Colours settings back to their defaults first, apart from Colour categories, so tweak from there.
 - Trader prices show again after a raid. They stayed at "..." in the stash until you sold something to a trader, because the trader price lists weren't asked for again.
 - Coloured item backgrounds no longer hide the game's own highlights. Hovering an item lights it up again, and dragging an item shows the soft yellow highlight on the containers and stacks it can go into. Red backgrounds for guns missing parts and the repair buff's gold show through too.
 - New **Colours show in** in F12: where backgrounds and names on items are coloured, Stash, Raid or both. It no longer follows **Price on items shows in**, so you can keep the colours in a raid with no price tags.
