@@ -93,13 +93,21 @@ namespace PriceIndex
         ColoursNoTags
     }
 
+    public enum PrimaryCurrency
+    {
+        RUB,
+        USD,
+        EUR,
+        GP
+    }
+
     [BepInPlugin(Guid, Name, Version)]
     [BepInDependency("com.SPT.core", BepInDependency.DependencyFlags.HardDependency)]
     public class Plugin : BaseUnityPlugin
     {
         public const string Guid = "com.fums.priceindex";
         public const string Name = "Fums-PriceIndex";
-        public const string Version = "1.3.0";
+        public const string Version = "1.4.0";
 
         internal static ManualLogSource Log;
 
@@ -120,6 +128,8 @@ namespace PriceIndex
         internal static ConfigEntry<IconPosition> IconPosition;
         internal static ConfigEntry<bool> IncludeFence;
         internal static ConfigEntry<bool> ShowFlea;
+        internal static ConfigEntry<PrimaryCurrency> ValueCurrency;
+        internal static ConfigEntry<int> RublesPerPrimary;
         internal static ConfigEntry<bool> PerSlot;
         internal static ConfigEntry<ShowIn> ColoursIn;
         internal static ConfigEntry<int> RefreshSeconds;
@@ -216,6 +226,29 @@ namespace PriceIndex
                 + "or inspect window, prices on items show the best trader's price, colours use the trader's price "
                 + "and there's no flea-banned highlight. No flea prices are asked for. "
                 + "The flea is also hidden when the server has the flea market turned off.");
+            ValueCurrency = Config.Bind("2. General", "Primary currency", PrimaryCurrency.RUB,
+                "Currency used for flea prices, comparisons, colour tiers, money worth and price tags. "
+                + "Better Flea / the game still price in roubles internally; this only converts the number you see. "
+                + "Use USD, EUR or GP when a server (such as Anarchy Flea's Currency Economy) has disabled rouble offers. "
+                + "Colour tier thresholds are amounts in this currency.");
+            ValueCurrency.SettingChanged += (_, __) =>
+            {
+                Prices.ResetCourse();
+                Tiers.Invalidate();
+                RedrawItems();
+            };
+            RublesPerPrimary = Config.Bind("3. Advanced", "Rubles per primary currency", 0,
+                new ConfigDescription(
+                    "Exchange rate used when Primary currency is not RUB: how many roubles equal 1 USD, EUR or GP. "
+                    + "0 = automatic (trader courses, then the handbook price of that currency, then a built-in fallback). "
+                    + "Set this yourself if Anarchy Flea (or similar) has disabled roubles and tags look wrong — "
+                    + "around 140 for USD, 160 for EUR, 38000 for GP.",
+                    new AcceptableValueRange<int>(0, 200000)));
+            RublesPerPrimary.SettingChanged += (_, __) =>
+            {
+                Prices.ResetCourse();
+                RedrawItems();
+            };
             RefreshSeconds = Config.Bind("3. Advanced", "Flea price refresh (seconds)", 120,
                 new ConfigDescription("How long a flea price is kept before it is asked for again. "
                                       + "Better Flea's prices drift over time, so they're asked for again now and then.",
@@ -251,7 +284,7 @@ namespace PriceIndex
                 Describe("Colour mags, and guns with mags in them, as if the mags were full of the ammo already in them, "
                          + "so firing doesn't change the colour. An empty mag is coloured as an empty mag. Untick to colour by the rounds in it.", 93));
             ColourFullMoney = Config.Bind(colours, "Colour money as full stack", true,
-                Describe("Colour roubles, dollars and euros by what a full stack is worth, so each currency always has the same colour. "
+                Describe("Colour roubles, dollars, euros and GP coins by what a full stack is worth, so each currency always has the same colour. "
                          + "Untick to colour by how much the stack holds.", 92));
             ColourBannedAmmo = Config.Bind(colours, "Colour banned ammo by flea price", true,
                 Describe("Colour ammo by its flea price even when the flea has banned or locked it, so the colour shows how good the ammo is. "
@@ -278,8 +311,8 @@ namespace PriceIndex
                         87 - i * 3, drawer: ColourField.Draw));
                 TierMin[i] = Config.Bind(colours, $"Tier {i + 1} from (roubles)", TierMinDefaults[i],
                     Describe(i == 0
-                            ? "Items worth at least this many roubles get tier 1's colour. Keep it at 0 so every item gets a colour. A stack counts as a whole."
-                            : $"Items worth at least this many roubles get tier {i + 1}'s colour instead of tier {i}'s. A stack counts as a whole.",
+                            ? "Items worth at least this much in the primary currency (see General) get tier 1's colour. Keep it at 0 so every item gets a colour. A stack counts as a whole. Defaults are sized for RUB: lower them for USD, EUR or GP."
+                            : $"Items worth at least this much in the primary currency get tier {i + 1}'s colour instead of tier {i}'s. A stack counts as a whole.",
                         86 - i * 3));
                 TierMin[i].SettingChanged += (_, __) => ColoursChanged();
                 TierColour[i].SettingChanged += (_, __) => ColoursChanged();
@@ -332,7 +365,8 @@ namespace PriceIndex
             Stacks.SettingChanged += (_, __) => RedrawItems();
             IconPosition.SettingChanged += (_, __) => RedrawItems();
             IconIn.SettingChanged += (_, __) => RedrawItems();
-            Logger.LogInfo($"{Name} {Version} loaded.");
+            Logger.LogInfo($"{Name} {Version} loaded. Primary currency={ValueCurrency.Value}. "
+                           + "Item values from Better Flea (roubles) / traders; display converts with the primary course.");
         }
 
         private static ConfigDescription Describe(string text, int order, AcceptableValueBase range = null, Action<ConfigEntryBase> drawer = null)

@@ -276,15 +276,18 @@ namespace PriceIndex
 
             if (roubles == null)
                 return null;
-            return Lookup(Plugin.ColourPerSlot.Value ? roubles.Value / info.Slots : roubles.Value);
+
+            double amount = Plugin.ColourPerSlot.Value ? roubles.Value / info.Slots : roubles.Value;
+            double? primary = Prices.ToPrimary(amount);
+            return primary == null ? null : Lookup(primary.Value);
         }
 
-        public static Color32? ForMoney(double? roubles)
+        public static Color32? ForMoney(double? value)
         {
-            return roubles == null || !Plugin.ColourEnabled.Value || !Coloured(ColourCategory.Money) ? null : Lookup(roubles.Value);
+            return value == null || !Plugin.ColourEnabled.Value || !Coloured(ColourCategory.Money) ? null : Lookup(value.Value);
         }
 
-        private static Color32? Lookup(double roubles)
+        private static Color32? Lookup(double amount)
         {
             if (_dirty)
                 Rebuild();
@@ -292,7 +295,7 @@ namespace PriceIndex
             Color32? found = null;
             foreach (Tier tier in Built)
             {
-                if (roubles < tier.Min)
+                if (amount < tier.Min)
                     break;
                 found = tier.Colour;
             }
