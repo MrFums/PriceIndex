@@ -99,7 +99,7 @@ namespace PriceIndex
     {
         public const string Guid = "com.fums.priceindex";
         public const string Name = "Fums-PriceIndex";
-        public const string Version = "1.3.0";
+        public const string Version = "1.3.1";
 
         internal static ManualLogSource Log;
 
@@ -332,6 +332,7 @@ namespace PriceIndex
             Stacks.SettingChanged += (_, __) => RedrawItems();
             IconPosition.SettingChanged += (_, __) => RedrawItems();
             IconIn.SettingChanged += (_, __) => RedrawItems();
+            Config.SettingChanged += (_, __) => PriceInfo.Forget();
             Logger.LogInfo($"{Name} {Version} loaded.");
         }
 

@@ -57,7 +57,7 @@ namespace PriceIndex
         private const float FirstPause = 10f;
         private const float LongestPause = 60f;
 
-        private enum Priority
+        internal enum Priority
         {
             Urgent,
             Normal,
@@ -83,8 +83,10 @@ namespace PriceIndex
         private static bool _batch;
         private static Action _checked;
 
-        private class Entry
+        internal class Entry
         {
+            public string Key;
+            public int Version;
             public double Price;
             public bool Known;
             public float FetchedAt = float.NegativeInfinity;
@@ -154,6 +156,103 @@ namespace PriceIndex
         private static bool _cacheLoaded;
         private static bool _cacheDirty;
         private static float _saveAt;
+        private static int _fillNext;
+        private static List<Entry> _tracking;
+        private static int _worldFrame = -1;
+        private static int _world;
+
+        public static int Generation;
+
+        internal sealed class Stamp
+        {
+            public Entry[] Entries;
+            public int[] Versions;
+            public int Generation;
+            public int World;
+        }
+
+        public static void Track()
+        {
+            _tracking = new List<Entry>();
+        }
+
+        public static Stamp Tracked()
+        {
+            List<Entry> used = _tracking ?? new List<Entry>();
+            _tracking = null;
+            var stamp = new Stamp
+            {
+                Entries = used.ToArray(),
+                Versions = new int[used.Count],
+                Generation = Generation,
+                World = World
+            };
+            for (int i = 0; i < used.Count; i++)
+                stamp.Versions[i] = used[i].Version;
+            return stamp;
+        }
+
+        public static bool Fresh(Stamp stamp, bool warm)
+        {
+            if (stamp.Generation != Generation || stamp.World != World)
+                return false;
+
+            for (int i = 0; i < stamp.Entries.Length; i++)
+            {
+                Entry entry = stamp.Entries[i];
+                if (entry.Version != stamp.Versions[i] || !Flea.TryGetValue(entry.Key, out Entry now) || now != entry)
+                    return false;
+            }
+
+            foreach (Entry entry in stamp.Entries)
+            {
+                FleaOrder.Remove(entry.Used);
+                FleaOrder.AddLast(entry.Used);
+                if (entry.Stale)
+                    Ask(entry.Key, entry, warm ? Priority.Warm : Priority.Normal);
+            }
+
+            return true;
+        }
+
+        private static int World
+        {
+            get
+            {
+                if (Time.frameCount != _worldFrame)
+                {
+                    _worldFrame = Time.frameCount;
+                    _world = WorldNow();
+                }
+
+                return _world;
+            }
+        }
+
+        private static int WorldNow()
+        {
+            unchecked
+            {
+                var session = Session;
+                ProfileInfo player = session?.Profile?.Info;
+                int hash = 17;
+                hash = hash * 31 + (player?.Level ?? -1);
+                hash = hash * 31 + (player?.GetBan(EBanType.RagFair) != null ? 1 : 0);
+                hash = hash * 31 + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(RagFair.Settings);
+                hash = hash * 31 + (InRaid ? 1 : 0);
+                if (session?.Traders != null)
+                {
+                    foreach (Trader trader in session.Traders)
+                    {
+                        hash = hash * 31 + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(trader?._supplyData);
+                        hash = hash * 31 + (trader?.Info != null && trader.Info.Available ? 1 : 0);
+                        hash = hash * 31 + (trader?.Info?.LoyaltyLevel ?? 0);
+                    }
+                }
+
+                return hash;
+            }
+        }
 
         private static void Invoke(Action action)
         {
@@ -174,13 +273,6 @@ namespace PriceIndex
                 var app = Singleton<ClientApplication<IEftSession>>.Instance;
                 return app?.GetClientBackEndSession();
             }
-        }
-
-        public static void Warm(Item item)
-        {
-            if (!FleaOff)
-                TryGetFlea(item, out _, out _, null, false, true);
-            LoadTraders();
         }
 
         private static void LoadTraders()
@@ -255,6 +347,7 @@ namespace PriceIndex
 
                 _preloaded = true;
                 _preloadNext = 0;
+                _fillNext = 0;
                 PreloadItems.Clear();
                 Item equipment = inventory.Equipment;
                 foreach (Item root in new Item[] { inventory.Stash, equipment })
@@ -279,6 +372,15 @@ namespace PriceIndex
                 TryGetFlea(item, out _, out _, null, false, warm);
                 if (item is Magazine mag && mag.FirstRealAmmo() is Item round)
                     TryGetFlea(round, out _, out _, null, false, warm);
+            }
+
+            while (_preloadNext >= PreloadItems.Count && _fillNext < PreloadItems.Count && _inFlight == 0 && NextJob() == null
+                   && watch.Elapsed.TotalMilliseconds < PreloadBudget)
+            {
+                Item item = PreloadItems[_fillNext++];
+                if (item is Money || item.QuestItem || item.Owner == null)
+                    continue;
+                PriceInfo.ForIcon(item, IconPatches.FleaWanted, false);
             }
         }
 
@@ -453,8 +555,12 @@ namespace PriceIndex
         private static void Store(Entry entry, double price)
         {
             bool known = price > 0;
-            if (entry.Known && (!known || price != entry.Price))
-                Redraw.Changed();
+            if (known != entry.Known || known && price != entry.Price)
+            {
+                entry.Version++;
+                if (entry.Known || !float.IsNegativeInfinity(entry.FetchedAt))
+                    Redraw.Changed();
+            }
             entry.Price = price;
             entry.Known = known;
             if (entry.Market)
@@ -574,6 +680,7 @@ namespace PriceIndex
                     Plugin.Log.LogInfo($"No Better Flea prices on this server ({e.Message}). Using the flea prices the game already has.");
                 }
 
+                Generation++;
                 var done = _checked;
                 _checked = null;
                 Invoke(done);
@@ -647,7 +754,10 @@ namespace PriceIndex
                     {
                         var list = new HashSet<string>(answer.FleaBanned);
                         if (_bannedList == null || !_bannedList.SetEquals(list))
+                        {
+                            Generation++;
                             Redraw.Changed();
+                        }
                         _bannedList = list;
                     }
                 }
@@ -699,7 +809,7 @@ namespace PriceIndex
                     Flea.Remove(FleaOrder.First.Value);
                     FleaOrder.RemoveFirst();
                 }
-                Flea[key] = entry = new Entry { Market = market };
+                Flea[key] = entry = new Entry { Key = key, Market = market };
                 entry.Used = FleaOrder.AddLast(key);
             }
             else
@@ -708,6 +818,7 @@ namespace PriceIndex
                 FleaOrder.AddLast(entry.Used);
             }
 
+            _tracking?.Add(entry);
             return entry;
         }
 
@@ -1014,7 +1125,10 @@ namespace PriceIndex
             {
                 var result = await session.GetSupplyData(trader.Id);
                 if (result.Succeed && trader._supplyData == null)
+                {
                     trader._supplyData = result.Value;
+                    Generation++;
+                }
                 onLoaded?.Invoke();
             }
             catch (Exception e)
@@ -1137,7 +1251,102 @@ namespace PriceIndex
             return (where & (Prices.InRaid ? ShowIn.Raid : ShowIn.Stash)) != 0;
         }
 
-        public static PriceInfo For(Item item, Action onReady, bool urgent, bool flea = true)
+        private sealed class Memo
+        {
+            public PriceInfo Info;
+            public bool Flea;
+            public long Signature;
+            public Prices.Stamp Stamp;
+        }
+
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Item, Memo> Memos =
+            new System.Runtime.CompilerServices.ConditionalWeakTable<Item, Memo>();
+
+        public static void Forget()
+        {
+            Prices.Generation++;
+        }
+
+        public static PriceInfo ForIcon(Item item, bool flea, bool warm)
+        {
+            long signature = Signature(item);
+            if (Memos.TryGetValue(item, out Memo memo) && memo.Flea == flea && memo.Signature == signature && Prices.Fresh(memo.Stamp, warm))
+                return memo.Info;
+
+            PriceInfo info;
+            Prices.Stamp stamp;
+            Prices.Track();
+            try
+            {
+                info = For(item, Redraw.OnPrice, false, flea, warm);
+            }
+            finally
+            {
+                stamp = Prices.Tracked();
+            }
+
+            Memos.Remove(item);
+            if (!info.Loading)
+                Memos.Add(item, new Memo { Info = info, Flea = flea, Signature = signature, Stamp = stamp });
+            return info;
+        }
+
+        private static long Signature(Item root)
+        {
+            unchecked
+            {
+                long hash = (long)14695981039346656037UL;
+                bool contents = false;
+                hash = Mix(hash, root.StackObjectsCount);
+                hash = Mix(hash, (int?)root.Owner?.OwnerType ?? -1);
+                hash = Mix(hash, root.SpawnedInSession ? 1 : 0);
+                foreach (Item part in root.GetAllItems())
+                {
+                    if (part != root)
+                    {
+                        if (part.CurrentAddress is GridItemAddress)
+                        {
+                            contents = true;
+                            continue;
+                        }
+
+                        if (!Prices.Attached(part, root))
+                            continue;
+                        hash = Mix(hash, part.TemplateId.GetHashCode());
+                        hash = Mix(hash, part.StackObjectsCount);
+                        hash = Mix(hash, part.CurrentAddress?.Container?.ID?.GetHashCode() ?? 0);
+                    }
+
+                    if (part.TryGetItemComponent(out RepairableComponent repairable))
+                    {
+                        hash = Mix(hash, BitConverter.SingleToInt32Bits(repairable.Durability));
+                        hash = Mix(hash, BitConverter.SingleToInt32Bits(repairable.MaxDurability));
+                    }
+                    if (part.TryGetItemComponent(out MedKitComponent medKit))
+                        hash = Mix(hash, BitConverter.SingleToInt32Bits(medKit.HpResource));
+                    if (part.TryGetItemComponent(out FoodDrinkComponent food))
+                        hash = Mix(hash, BitConverter.SingleToInt32Bits(food.HpPercent));
+                    if (part.TryGetItemComponent(out KeyComponent key))
+                        hash = Mix(hash, key.NumberOfUsages);
+                    if (part.TryGetItemComponent(out ResourceComponent resource))
+                        hash = Mix(hash, BitConverter.SingleToInt32Bits(resource.Value));
+                    if (part.TryGetItemComponent(out RepairKitComponent repairKit))
+                        hash = Mix(hash, BitConverter.SingleToInt32Bits(repairKit.Resource));
+                }
+
+                return Mix(hash, contents ? 1 : 0);
+            }
+        }
+
+        private static long Mix(long hash, int value)
+        {
+            unchecked
+            {
+                return (hash ^ value) * 1099511628211L;
+            }
+        }
+
+        public static PriceInfo For(Item item, Action onReady, bool urgent, bool flea = true, bool warm = false)
         {
             int stack = Math.Max(1, item.StackObjectsCount);
             int count = ShopStock(item) ? 1 : stack;
@@ -1149,7 +1358,7 @@ namespace PriceIndex
             string block = Prices.FleaBlock(item);
             double each = 0;
             bool exact = false;
-            FleaState state = flea ? Prices.TryGetFlea(item, out each, out exact, onReady, urgent) : FleaState.Unavailable;
+            FleaState state = flea ? Prices.TryGetFlea(item, out each, out exact, onReady, urgent, warm) : FleaState.Unavailable;
             info.Refreshing = state == FleaState.Refreshing;
             switch (state)
             {

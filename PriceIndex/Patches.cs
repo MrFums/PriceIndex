@@ -447,11 +447,32 @@ namespace PriceIndex
             harmony.Patch(setSearched, postfix: new HarmonyMethod(typeof(IconPatches), nameof(CellPostfix)));
         }
 
+        private static int _frame = -1;
+        private static readonly Dictionary<ItemView, (Item Item, bool Searched, bool Examined)> DrawnThisFrame =
+            new Dictionary<ItemView, (Item, bool, bool)>();
+
         private static void CellPostfix(ItemView __instance)
+        {
+            if (__instance == null)
+                return;
+            if (Time.frameCount != _frame)
+            {
+                _frame = Time.frameCount;
+                DrawnThisFrame.Clear();
+            }
+
+            var state = (__instance.Item, __instance.IsSearched, __instance.Examined);
+            if (DrawnThisFrame.TryGetValue(__instance, out var drawn) && drawn == state)
+                return;
+            DrawnThisFrame[__instance] = state;
+            Draw(__instance);
+        }
+
+        private static void Draw(ItemView cell)
         {
             try
             {
-                UpdateCell(__instance);
+                UpdateCell(cell);
             }
             catch (Exception e)
             {
@@ -486,8 +507,10 @@ namespace PriceIndex
             bool tagged = Plugin.IconPrice.Value != IconPrice.Off && Shows(cell, item, Plugin.IconIn.Value);
             bool named = shows && Tiers.NamesOnItems;
             bool backed = shows && Tiers.ItemBackgroundOn;
-            PriceInfo info = tagged || named || backed ? PriceInfo.For(item, Redraw.OnPrice, false, NeedsFlea(tagged, named, backed)) : null;
-            if (info != null && (info.Loading || info.Refreshing))
+            bool needsFlea = NeedsFlea(tagged, named, backed);
+            bool warms = !tagged && Warms(cell, item);
+            PriceInfo info = tagged || named || backed || warms ? PriceInfo.ForIcon(item, needsFlea || warms, warms && !needsFlea) : null;
+            if (info != null && info.Loading)
                 Waiting.Add(cell);
 
             Color32? back = backed ? Tiers.ForItem(info) : null;
@@ -504,8 +527,6 @@ namespace PriceIndex
             string text = tagged ? Text(info, out locked, out tier) : null;
             if (locked && Tiers.PricesOn)
                 tier = Tiers.Blocked;
-            if (!tagged && Warms(cell, item))
-                Prices.Warm(item);
 
             Transform existing = cell.transform.Find(LabelName);
             if (string.IsNullOrEmpty(text))
@@ -545,6 +566,18 @@ namespace PriceIndex
             tag.gameObject.SetActive(true);
             tag.transform.SetAsLastSibling();
             tag.Follow();
+        }
+
+        public static bool FleaWanted
+        {
+            get
+            {
+                bool tagged = Plugin.IconPrice.Value != IconPrice.Off && Plugin.IconIn.Value != ShowIn.None;
+                bool coloured = Plugin.ColoursIn.Value != ShowIn.None;
+                bool hover = Plugin.HoverIn.Value != ShowIn.None || Plugin.Inspect.Value != InspectStyle.Off && Plugin.InspectIn.Value != ShowIn.None;
+                bool needsFlea = NeedsFlea(tagged, coloured && Tiers.NamesOnItems, coloured && Tiers.ItemBackgroundOn);
+                return needsFlea || !tagged && hover;
+            }
         }
 
         private static bool NeedsFlea(bool tagged, bool named, bool backed)
@@ -1035,7 +1068,7 @@ namespace PriceIndex
                 ItemView cell = Due.Dequeue();
                 InLine.Remove(cell);
                 if (cell != null && cell.Item != null)
-                    CellPostfix(cell);
+                    Draw(cell);
             }
         }
 

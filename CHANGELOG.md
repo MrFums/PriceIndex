@@ -1,5 +1,11 @@
 ﻿# Changelog
 
+## 1.3.1
+
+- Scrolling the stash is smoother. Each item's price is worked out once and kept until its price, its condition or your traders change.
+- Your stash is priced in the background once its prices arrive, so the first scroll through it is smooth too.
+- Prices that are due a refresh keep showing while the new price loads.
+
 ## 1.3.0
 
 - New **Presets** at the top of F12: one click sets up the Display and Colours settings. Minimal: prices in the hover tooltip only. Default: the settings Price Index comes with. Colours: the default prices, with items, names and price tags coloured from cheapest to dearest. Colours, no tags: items and names coloured, with no price on items. Both colour presets colour every item by the price it shows, not by a full stack or a full mag. Each one puts the Display and Colours settings back to their defaults first, apart from Colour categories, so tweak from there.
